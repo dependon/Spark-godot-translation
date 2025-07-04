@@ -16,7 +16,7 @@ const io = socketIo(server, {
         methods: ["GET", "POST"]
     }
 });
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3123;
 
 // 中间件
 app.use(cors());
