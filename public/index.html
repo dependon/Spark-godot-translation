@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CSV翻译工具</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+        
+        .content {
+            padding: 40px;
+        }
+        
+        .step {
+            margin-bottom: 40px;
+            padding: 25px;
+            border: 2px dashed #e0e0e0;
+            border-radius: 10px;
+            transition: all 0.3s ease;
+        }
+        
+        .step.active {
+            border-color: #4facfe;
+            background: #f8fcff;
+        }
+        
+        .step-title {
+            font-size: 1.3em;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+        }
+        
+        .step-number {
+            background: #4facfe;
+            color: white;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 15px;
+            font-weight: bold;
+        }
+        
+        .file-upload {
+            position: relative;
+            display: inline-block;
+            cursor: pointer;
+            width: 100%;
+        }
+        
+        .file-upload input[type=file] {
+            position: absolute;
+            left: -9999px;
+        }
+        
+        .file-upload-label {
+            display: block;
+            padding: 20px;
+            background: #f8f9fa;
+            border: 2px dashed #dee2e6;
+            border-radius: 8px;
+            text-align: center;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        
+        .file-upload-label:hover {
+            background: #e9ecef;
+            border-color: #4facfe;
+        }
+        
+        .file-upload-label.dragover {
+            background: #e3f2fd;
+            border-color: #2196f3;
+        }
+        
+        .btn {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 1em;
+            font-weight: bold;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(79, 172, 254, 0.4);
+        }
+        
+        .btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .form-group select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 1em;
+            transition: border-color 0.3s ease;
+        }
+        
+        .form-group select:focus {
+            outline: none;
+            border-color: #4facfe;
+        }
+        
+        .language-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+        
+        .language-item {
+            display: flex;
+            align-items: center;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            transition: background-color 0.3s ease;
+        }
+        
+        .language-item:hover {
+            background: #e9ecef;
+        }
+        
+        .language-item input[type="checkbox"] {
+            margin-right: 10px;
+            transform: scale(1.2);
+        }
+        
+        .progress {
+            width: 100%;
+            height: 20px;
+            background: #e0e0e0;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 20px 0;
+            display: none;
+        }
+        
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+        
+        .alert {
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+            display: none;
+        }
+        
+        .alert.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .alert.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .alert.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        
+        .file-info {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            display: none;
+        }
+        
+        .file-info h4 {
+            margin-bottom: 10px;
+            color: #333;
+        }
+        
+        .file-info p {
+            margin: 5px 0;
+            color: #666;
+        }
+        
+        .preview-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+            font-size: 0.9em;
+        }
+        
+        .preview-table th,
+        .preview-table td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        
+        .preview-table th {
+            background: #f8f9fa;
+            font-weight: bold;
+        }
+        
+        .hidden {
+            display: none;
+        }
+        
+        @media (max-width: 768px) {
+            .content {
+                padding: 20px;
+            }
+            
+            .header h1 {
+                font-size: 2em;
+            }
+            
+            .language-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🌐 CSV翻译工具</h1>
+            <p>支持15种语言的智能翻译，基于腾讯翻译API</p>
+        </div>
+        
+        <div class="content">
+            <!-- 步骤1: 上传文件 -->
+            <div class="step active" id="step1">
+                <div class="step-title">
+                    <span class="step-number">1</span>
+                    上传CSV文件
+                </div>
+                <div class="file-upload">
+                    <input type="file" id="csvFile" accept=".csv" />
+                    <label for="csvFile" class="file-upload-label" id="fileLabel">
+                        <div style="font-size: 2em; margin-bottom: 10px;">📁</div>
+                        <div>点击选择CSV文件或拖拽文件到此处</div>
+                        <div style="font-size: 0.9em; color: #666; margin-top: 5px;">支持格式: .csv</div>
+                    </label>
+                </div>
+                
+                <div class="file-info" id="fileInfo">
+                    <h4>文件信息</h4>
+                    <p id="fileName"></p>
+                    <p id="fileSize"></p>
+                    <p id="rowCount"></p>
+                    <p id="existingLanguages"></p>
+                    <div id="previewContainer"></div>
+                </div>
+                
+                <div class="alert" id="uploadAlert"></div>
+            </div>
+            
+            <!-- 步骤2: 选择翻译选项 -->
+            <div class="step" id="step2">
+                <div class="step-title">
+                    <span class="step-number">2</span>
+                    选择翻译选项
+                </div>
+                
+                <div class="form-group">
+                    <label for="sourceLanguage">源语言列:</label>
+                    <select id="sourceLanguage">
+                        <option value="">请先上传文件</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label>目标语言 (选择要翻译的语言):</label>
+                    <div class="language-grid" id="languageGrid">
+                        <!-- 语言选项将通过JavaScript动态生成 -->
+                    </div>
+                </div>
+                
+                <button class="btn" id="startTranslation" disabled>开始翻译</button>
+                
+                <div class="progress" id="progressContainer">
+                    <div class="progress-bar" id="progressBar"></div>
+                </div>
+                
+                <div class="alert" id="translationAlert"></div>
+            </div>
+            
+            <!-- 步骤3: 下载结果 -->
+            <div class="step" id="step3">
+                <div class="step-title">
+                    <span class="step-number">3</span>
+                    下载翻译结果
+                </div>
+                
+                <p>翻译完成！点击下面的按钮下载翻译后的CSV文件。</p>
+                <br>
+                <a class="btn" id="downloadBtn" href="#" style="display: none;">📥 下载翻译文件</a>
+                
+                <div class="alert" id="downloadAlert"></div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="script.js"></script>
+</body>
+</html>
