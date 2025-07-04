@@ -1,7 +1,7 @@
 {
   "name": "csv-translator",
   "version": "1.0.0",
-  "description": "CSV翻译工具 - 支持腾讯翻译API",
+  "description": "CSV文件翻译工具，支持百度翻译API",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -14,13 +14,12 @@
     "csv-writer": "^1.6.0",
     "axios": "^1.6.0",
     "crypto": "^1.0.1",
-    "cors": "^2.8.5",
-    "dotenv": "^16.3.1"
+    "cors": "^2.8.5"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"
   },
-  "keywords": ["csv", "translation", "tencent", "api"],
+  "keywords": ["csv", "translation", "baidu", "api"],
   "author": "Developer",
   "license": "MIT"
 }
