@@ -14,6 +14,7 @@ yarn-error.log*
 # Uploads and downloads
 uploads/
 downloads/
+outputs/
 
 # Logs
 logs
