@@ -3,10 +3,19 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const cors = require('cors');
+const http = require('http');
+const socketIo = require('socket.io');
 const BaiduTranslationService = require('./services/translationService');
 const CSVService = require('./services/csvService');
 
 const app = express();
+const server = http.createServer(app);
+const io = socketIo(server, {
+    cors: {
+        origin: "*",
+        methods: ["GET", "POST"]
+    }
+});
 const PORT = process.env.PORT || 3000;
 
 // 中间件
@@ -197,8 +206,18 @@ app.post('/api/translate', upload.single('csvFile'), async (req, res) => {
                 // 更新翻译结果
                 translations.forEach((translation, i) => {
                     const dataIndex = indices[i];
+                    const originalText = textsToTranslate[i];
                     data[dataIndex][targetLang] = translation;
                     completedTranslations++;
+                    
+                    // 发送实时翻译日志
+                    io.emit('translationLog', {
+                        originalText,
+                        translatedText: translation,
+                        targetLanguage: targetLang,
+                        status: 'success',
+                        progress: Math.round((completedTranslations / totalTranslations) * 100)
+                    });
                 });
             }
             
@@ -274,14 +293,24 @@ app.use((error, req, res, next) => {
     });
 });
 
+// Socket.IO连接处理
+io.on('connection', (socket) => {
+    console.log('客户端已连接:', socket.id);
+    
+    socket.on('disconnect', () => {
+        console.log('客户端已断开连接:', socket.id);
+    });
+});
+
 // 启动服务器
-app.listen(PORT, () => {
+server.listen(PORT, () => {
     console.log(`CSV翻译服务器运行在 http://localhost:${PORT}`);
     console.log('支持的功能:');
     console.log('- CSV文件上传和解析');
     console.log('- 百度翻译API集成');
     console.log('- 28种语言翻译支持');
     console.log('- 翻译结果下载');
+    console.log('- 实时翻译日志推送');
 });
 
 module.exports = app;

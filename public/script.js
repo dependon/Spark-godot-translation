@@ -3,6 +3,7 @@ class CSVTranslator {
         this.apiConfigured = false;
         this.currentFile = null;
         this.supportedLanguages = {};
+        this.translationLog = [];
         this.init();
     }
 
@@ -10,6 +11,7 @@ class CSVTranslator {
         this.bindEvents();
         await this.loadSupportedLanguages();
         this.setupDragAndDrop();
+        this.initSocket();
     }
 
     bindEvents() {
@@ -24,6 +26,9 @@ class CSVTranslator {
         
         // 下载按钮
         document.getElementById('downloadBtn').addEventListener('click', () => this.downloadFile());
+        
+        // 清空日志按钮
+        document.getElementById('clearLogBtn').addEventListener('click', () => this.clearTranslationLog());
     }
 
     setupDragAndDrop() {
@@ -234,6 +239,9 @@ class CSVTranslator {
         this.showProgressSection();
         this.updateProgress(0, '准备开始翻译...');
         
+        // 清空之前的日志
+        this.clearTranslationLog();
+        
         const formData = new FormData();
         formData.append('csvFile', this.currentFile);
         formData.append('sourceColumn', sourceColumn);
@@ -344,6 +352,104 @@ class CSVTranslator {
             statusElement.className = 'status-message';
         }, 3000);
     }
+
+    // 翻译日志相关方法
+    addTranslationLog(originalText, translatedText, targetLanguage, status = 'success') {
+        const timestamp = new Date().toLocaleTimeString();
+        const logEntry = {
+            timestamp,
+            originalText,
+            translatedText,
+            targetLanguage,
+            status
+        };
+        
+        this.translationLog.push(logEntry);
+        this.renderLogEntry(logEntry);
+        this.scrollLogToBottom();
+    }
+
+    renderLogEntry(logEntry) {
+        const logContainer = document.getElementById('translationLog');
+        const logElement = document.createElement('div');
+        logElement.className = `log-entry ${logEntry.status}`;
+        
+        const languageName = this.supportedLanguages[logEntry.targetLanguage] || logEntry.targetLanguage;
+        
+        logElement.innerHTML = `
+            <div class="log-timestamp">${logEntry.timestamp}</div>
+            <div class="log-content">
+                <div><span class="log-original">原文:</span> ${this.escapeHtml(logEntry.originalText)}</div>
+                <div><span class="log-translated">译文:</span> ${this.escapeHtml(logEntry.translatedText)}</div>
+                <div class="log-language">目标语言: ${languageName} (${logEntry.targetLanguage})</div>
+            </div>
+        `;
+        
+        logContainer.appendChild(logElement);
+    }
+
+    clearTranslationLog() {
+        this.translationLog = [];
+        const logContainer = document.getElementById('translationLog');
+        logContainer.innerHTML = '';
+    }
+
+    scrollLogToBottom() {
+        const logContainer = document.getElementById('translationLog');
+        logContainer.scrollTop = logContainer.scrollHeight;
+    }
+
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    // Socket.IO初始化
+     initSocket() {
+         if (typeof io !== 'undefined') {
+             this.socket = io();
+             
+             this.socket.on('connect', () => {
+                 console.log('已连接到服务器');
+             });
+             
+             this.socket.on('translationLog', (logData) => {
+                 this.addTranslationLog(
+                     logData.originalText,
+                     logData.translatedText,
+                     logData.targetLanguage,
+                     logData.status
+                 );
+                 
+                 // 更新进度
+                 if (logData.progress !== undefined) {
+                     this.updateProgress(logData.progress, `翻译进度: ${logData.progress}%`);
+                 }
+             });
+             
+             this.socket.on('disconnect', () => {
+                 console.log('与服务器断开连接');
+             });
+         }
+     }
+
+     // 模拟翻译过程中的实时日志更新（保留作为备用）
+     simulateTranslationProgress() {
+         // 这个方法现在主要用于演示，实际翻译会通过Socket.IO接收实时数据
+         const sampleTranslations = [
+             { original: '你好', translated: 'Hello', language: 'en' },
+             { original: '世界', translated: 'World', language: 'en' },
+             { original: '游戏', translated: 'Game', language: 'en' },
+             { original: '开始', translated: 'Start', language: 'en' }
+         ];
+         
+         sampleTranslations.forEach((item, index) => {
+             setTimeout(() => {
+                 this.addTranslationLog(item.original, item.translated, item.language);
+             }, (index + 1) * 1000);
+         });
+     }
 }
 
 // 添加CSS动画

@@ -84,6 +84,15 @@
                     <div class="progress-fill" id="progressFill"></div>
                 </div>
                 <div id="progressText" class="progress-text">准备开始翻译...</div>
+                
+                <!-- 实时翻译日志 -->
+                <div class="translation-log-container">
+                    <div class="log-header">
+                        <h3>翻译日志</h3>
+                        <button id="clearLogBtn" class="btn btn-secondary btn-small">清空日志</button>
+                    </div>
+                    <div id="translationLog" class="translation-log"></div>
+                </div>
             </section>
 
             <!-- 结果显示区域 -->
@@ -99,6 +108,7 @@
         </footer>
     </div>
 
+    <script src="/socket.io/socket.io.js"></script>
     <script src="script.js"></script>
 </body>
 </html>
