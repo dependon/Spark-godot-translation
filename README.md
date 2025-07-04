@@ -28,8 +28,8 @@
 
 1. **克隆项目**
 ```bash
-git clone <repository-url>
-cd csv-translator
+git clone https://github.com/dependon/Spark-godot-translation.git
+cd Spark-godot-translation
 ```
 
 2. **安装依赖**
