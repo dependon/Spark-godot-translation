@@ -54,7 +54,10 @@ const upload = multer({
 
 // 初始化服务
 const csvService = new CSVService();
-let translationService = null;
+// 存储每个会话的翻译服务实例
+const sessionTranslationServices = new Map();
+// 存储会话信息
+const sessionInfo = new Map();
 
 // API路由
 
@@ -69,7 +72,7 @@ app.get('/api/languages', (req, res) => {
 
 // 配置百度翻译API
 app.post('/api/config', (req, res) => {
-    const { appId, secretKey } = req.body;
+    const { appId, secretKey, sessionId } = req.body;
     
     if (!appId || !secretKey) {
         return res.status(400).json({
@@ -78,11 +81,21 @@ app.post('/api/config', (req, res) => {
         });
     }
     
-    translationService = new BaiduTranslationService(appId, secretKey);
+    if (!sessionId) {
+        return res.status(400).json({
+            success: false,
+            message: '缺少会话ID'
+        });
+    }
+    
+    // 为特定会话创建翻译服务实例
+    const translationService = new BaiduTranslationService(appId, secretKey);
+    sessionTranslationServices.set(sessionId, translationService);
     
     res.json({
         success: true,
-        message: '百度翻译API配置成功'
+        message: '百度翻译API配置成功',
+        sessionId: sessionId
     });
 });
 
@@ -124,6 +137,21 @@ app.post('/api/upload', upload.single('csvFile'), async (req, res) => {
 // 翻译CSV文件
 app.post('/api/translate', upload.single('csvFile'), async (req, res) => {
     try {
+        const {
+            sourceColumn,
+            targetLanguages,
+            forceRetranslate = false,
+            sessionId
+        } = req.body;
+        
+        if (!sessionId) {
+            return res.status(400).json({
+                success: false,
+                message: '缺少会话ID'
+            });
+        }
+        
+        const translationService = sessionTranslationServices.get(sessionId);
         if (!translationService) {
             return res.status(400).json({
                 success: false,
@@ -137,12 +165,6 @@ app.post('/api/translate', upload.single('csvFile'), async (req, res) => {
                 message: '请选择CSV文件'
             });
         }
-
-        const {
-            sourceColumn,
-            targetLanguages,
-            forceRetranslate = false
-        } = req.body;
 
         if (!sourceColumn) {
             return res.status(400).json({
@@ -210,14 +232,18 @@ app.post('/api/translate', upload.single('csvFile'), async (req, res) => {
                     data[dataIndex][targetLang] = translation;
                     completedTranslations++;
                     
-                    // 发送实时翻译日志
-                    io.emit('translationLog', {
-                        originalText,
-                        translatedText: translation,
-                        targetLanguage: targetLang,
-                        status: 'success',
-                        progress: Math.round((completedTranslations / totalTranslations) * 100)
-                    });
+                    // 发送实时翻译日志到特定会话的客户端
+                    const sessionSocket = sessionInfo.get(sessionId);
+                    if (sessionSocket) {
+                        sessionSocket.emit('translationLog', {
+                            originalText,
+                            translatedText: translation,
+                            targetLanguage: targetLang,
+                            status: 'success',
+                            progress: Math.round((completedTranslations / totalTranslations) * 100),
+                            sessionId: sessionId
+                        });
+                    }
                 });
             }
             
@@ -297,8 +323,35 @@ app.use((error, req, res, next) => {
 io.on('connection', (socket) => {
     console.log('客户端已连接:', socket.id);
     
+    // 生成唯一的会话ID
+    const sessionId = 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+    
+    // 建立会话映射
+    sessionInfo.set(sessionId, socket);
+    
+    // 向客户端发送会话ID
+    socket.emit('sessionAssigned', { sessionId });
+    
+    // 监听客户端注册会话ID事件
+    socket.on('registerSession', (data) => {
+        if (data.sessionId) {
+            sessionInfo.set(data.sessionId, socket);
+            console.log('会话已注册:', data.sessionId, 'Socket ID:', socket.id);
+        }
+    });
+    
     socket.on('disconnect', () => {
         console.log('客户端已断开连接:', socket.id);
+        
+        // 清理会话信息
+        for (const [sessionId, sessionSocket] of sessionInfo.entries()) {
+            if (sessionSocket === socket) {
+                sessionInfo.delete(sessionId);
+                sessionTranslationServices.delete(sessionId);
+                console.log('会话已清理:', sessionId);
+                break;
+            }
+        }
     });
 });
 

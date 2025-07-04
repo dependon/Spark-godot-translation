@@ -4,6 +4,8 @@ class CSVTranslator {
         this.currentFile = null;
         this.supportedLanguages = {};
         this.translationLog = [];
+        this.sessionId = null;
+        this.socket = null;
         this.init();
     }
 
@@ -96,20 +98,25 @@ class CSVTranslator {
             return;
         }
         
+        if (!this.sessionId) {
+            this.showConfigMessage('会话未初始化，请刷新页面', 'error');
+            return;
+        }
+        
         try {
             const response = await fetch('/api/config', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ appId, secretKey })
+                body: JSON.stringify({ appId, secretKey, sessionId: this.sessionId })
             });
             
             const data = await response.json();
             
             if (data.success) {
                 this.apiConfigured = true;
-                this.showConfigMessage('API配置成功', 'success');
+                this.showConfigMessage('API配置成功 (会话ID: ' + this.sessionId + ')', 'success');
             } else {
                 this.showConfigMessage(data.message, 'error');
             }
@@ -247,6 +254,7 @@ class CSVTranslator {
         formData.append('sourceColumn', sourceColumn);
         formData.append('targetLanguages', JSON.stringify(selectedLanguages));
         formData.append('forceRetranslate', forceRetranslate);
+        formData.append('sessionId', this.sessionId);
         
         try {
             const response = await fetch('/api/translate', {
@@ -404,6 +412,20 @@ class CSVTranslator {
         div.textContent = text;
         return div.innerHTML;
     }
+    
+    // 更新会话显示
+    updateSessionDisplay() {
+        const sessionDisplay = document.getElementById('sessionDisplay');
+        if (sessionDisplay) {
+            if (this.sessionId) {
+                sessionDisplay.innerHTML = `<span class="session-info">当前会话: ${this.sessionId}</span>`;
+                sessionDisplay.style.display = 'block';
+            } else {
+                sessionDisplay.innerHTML = '<span class="session-info">未连接</span>';
+                sessionDisplay.style.display = 'block';
+            }
+        }
+    }
 
     // Socket.IO初始化
      initSocket() {
@@ -414,22 +436,36 @@ class CSVTranslator {
                  console.log('已连接到服务器');
              });
              
+             // 接收服务器分配的会话ID
+             this.socket.on('sessionAssigned', (data) => {
+                 this.sessionId = data.sessionId;
+                 console.log('会话ID已分配:', this.sessionId);
+                 this.updateSessionDisplay();
+                 // 向服务器注册会话ID
+                 this.socket.emit('registerSession', { sessionId: this.sessionId });
+             });
+             
              this.socket.on('translationLog', (logData) => {
-                 this.addTranslationLog(
-                     logData.originalText,
-                     logData.translatedText,
-                     logData.targetLanguage,
-                     logData.status
-                 );
-                 
-                 // 更新进度
-                 if (logData.progress !== undefined) {
-                     this.updateProgress(logData.progress, `翻译进度: ${logData.progress}%`);
+                 // 只处理属于当前会话的翻译日志
+                 if (logData.sessionId === this.sessionId) {
+                     this.addTranslationLog(
+                         logData.originalText,
+                         logData.translatedText,
+                         logData.targetLanguage,
+                         logData.status
+                     );
+                     
+                     // 更新进度
+                     if (logData.progress !== undefined) {
+                         this.updateProgress(logData.progress, `翻译进度: ${logData.progress}%`);
+                     }
                  }
              });
              
              this.socket.on('disconnect', () => {
                  console.log('与服务器断开连接');
+                 this.sessionId = null;
+                 this.updateSessionDisplay();
              });
          }
      }
