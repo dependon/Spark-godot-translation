@@ -1,16 +1,17 @@
 const express = require('express');
 const multer = require('multer');
-const csv = require('csv-parser');
-const createCsvWriter = require('csv-writer').createObjectCsvWriter;
-const axios = require('axios');
-const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const cors = require('cors');
-require('dotenv').config();
+const config = require('./config');
+const TranslationService = require('./services/translationService');
+const CsvService = require('./services/csvService');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = config.server.port;
+
+// 初始化服务
+const translationService = new TranslationService();
 
 // 中间件
 app.use(cors());
@@ -20,265 +21,204 @@ app.use(express.static('public'));
 // 文件上传配置
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, 'uploads/');
+    cb(null, config.server.uploadDir);
   },
   filename: (req, file, cb) => {
     cb(null, Date.now() + '-' + file.originalname);
   }
 });
 
-const upload = multer({ storage: storage });
+const upload = multer({ 
+  storage: storage,
+  limits: {
+    fileSize: config.file.maxFileSize
+  },
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (config.file.allowedExtensions.includes(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error('只允许上传CSV文件'));
+    }
+  }
+});
 
 // 确保上传和下载目录存在
-if (!fs.existsSync('uploads')) {
-  fs.mkdirSync('uploads');
-}
-if (!fs.existsSync('downloads')) {
-  fs.mkdirSync('downloads');
-}
-
-// 支持的语言映射
-const SUPPORTED_LANGUAGES = {
-  'zh': '简体中文',
-  'zh-TW': '繁体中文',
-  'en': '英语',
-  'ar': '阿拉伯语',
-  'de': '德语',
-  'es': '西班牙语',
-  'fr': '法语',
-  'it': '意大利语',
-  'ja': '日语',
-  'pt': '葡萄牙语',
-  'ru': '俄语',
-  'ko': '韩语',
-  'tr': '土耳其语',
-  'vi': '越南语',
-  'th': '泰语'
-};
-
-// 腾讯翻译API配置
-const TENCENT_CONFIG = {
-  secretId: process.env.TENCENT_SECRET_ID || 'YOUR_SECRET_ID',
-  secretKey: process.env.TENCENT_SECRET_KEY || 'YOUR_SECRET_KEY',
-  region: process.env.TENCENT_REGION || 'ap-beijing',
-  endpoint: 'tmt.tencentcloudapi.com'
-};
-
-// 生成腾讯云API签名
-function generateSignature(params, secretKey) {
-  const sortedParams = Object.keys(params).sort().map(key => `${key}=${params[key]}`).join('&');
-  const stringToSign = `POST\n${TENCENT_CONFIG.endpoint}\n/\n${sortedParams}`;
-  return crypto.createHmac('sha1', secretKey).update(stringToSign).digest('base64');
-}
-
-// 调用腾讯翻译API
-async function translateText(text, sourceLanguage, targetLanguage) {
-  if (!text || text.trim() === '') return text;
-  
-  try {
-    const timestamp = Math.floor(Date.now() / 1000);
-    const nonce = Math.floor(Math.random() * 1000000);
-    
-    const params = {
-      Action: 'TextTranslate',
-      Version: '2018-03-21',
-      Region: TENCENT_CONFIG.region,
-      Timestamp: timestamp,
-      Nonce: nonce,
-      SecretId: TENCENT_CONFIG.secretId,
-      SourceText: text,
-      Source: sourceLanguage,
-      Target: targetLanguage,
-      ProjectId: 0
-    };
-    
-    const signature = generateSignature(params, TENCENT_CONFIG.secretKey);
-    params.Signature = signature;
-    
-    const response = await axios.post(`https://${TENCENT_CONFIG.endpoint}`, null, {
-      params: params,
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded'
-      }
-    });
-    
-    if (response.data && response.data.Response && response.data.Response.TargetText) {
-      return response.data.Response.TargetText;
-    } else {
-      console.error('翻译API返回异常:', response.data);
-      return text; // 翻译失败时返回原文
-    }
-  } catch (error) {
-    console.error('翻译失败:', error.message);
-    return text; // 翻译失败时返回原文
-  }
-}
-
-// 读取CSV文件
-function readCsvFile(filePath) {
-  return new Promise((resolve, reject) => {
-    const results = [];
-    let headers = [];
-    
-    fs.createReadStream(filePath)
-      .pipe(csv())
-      .on('headers', (headerList) => {
-        headers = headerList;
-      })
-      .on('data', (data) => {
-        results.push(data);
-      })
-      .on('end', () => {
-        resolve({ headers, data: results });
-      })
-      .on('error', reject);
-  });
-}
-
-// 写入CSV文件
-function writeCsvFile(filePath, headers, data) {
-  return new Promise((resolve, reject) => {
-    const csvWriter = createCsvWriter({
-      path: filePath,
-      header: headers.map(h => ({ id: h, title: h }))
-    });
-    
-    csvWriter.writeRecords(data)
-      .then(() => resolve())
-      .catch(reject);
-  });
-}
+CsvService.ensureDirectoryExists(config.server.uploadDir);
+CsvService.ensureDirectoryExists(config.server.downloadDir);
 
 // API路由
 
 // 获取支持的语言列表
 app.get('/api/languages', (req, res) => {
-  res.json(SUPPORTED_LANGUAGES);
+  res.json(translationService.getSupportedLanguages());
 });
 
-// 上传并分析CSV文件
+// 上传文件
 app.post('/api/upload', upload.single('csvFile'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: '请选择CSV文件' });
     }
     
-    const csvData = await readCsvFile(req.file.path);
+    // 验证CSV文件格式
+    const filePath = req.file.path;
+    const isValid = await CsvService.validateCsvFile(filePath);
     
-    // 分析现有的语言列
-    const existingLanguages = csvData.headers.filter(h => h !== 'keys');
-    const missingLanguages = Object.keys(SUPPORTED_LANGUAGES).filter(lang => !existingLanguages.includes(lang));
+    if (!isValid) {
+      // 删除无效文件
+      CsvService.cleanupTempFiles([filePath]);
+      return res.status(400).json({ error: 'CSV文件格式无效' });
+    }
     
-    res.json({
-      success: true,
-      fileName: req.file.filename,
-      headers: csvData.headers,
-      existingLanguages,
-      missingLanguages,
-      rowCount: csvData.data.length,
-      preview: csvData.data.slice(0, 5) // 预览前5行
+    // 分析CSV文件结构
+    const structure = await CsvService.analyzeCsvStructure(filePath);
+    
+    res.json({ 
+      message: '文件上传成功',
+      filename: req.file.filename,
+      originalName: req.file.originalname,
+      structure: structure
     });
   } catch (error) {
-    console.error('文件上传处理失败:', error);
+    console.error('文件上传处理错误:', error);
     res.status(500).json({ error: '文件处理失败: ' + error.message });
   }
 });
 
-// 执行翻译
+// 翻译CSV文件
 app.post('/api/translate', async (req, res) => {
   try {
-    const { fileName, sourceLanguage, targetLanguages } = req.body;
+    const { filename, sourceLanguage, targetLanguage, columnIndex } = req.body;
     
-    if (!fileName || !sourceLanguage || !targetLanguages || !Array.isArray(targetLanguages)) {
-      return res.status(400).json({ error: '参数不完整' });
+    if (!filename || !targetLanguage || columnIndex === undefined) {
+      return res.status(400).json({ error: '缺少必要参数' });
     }
     
-    const filePath = path.join('uploads', fileName);
-    const csvData = await readCsvFile(filePath);
+    const inputPath = path.join(config.server.uploadDir, filename);
+    const outputFilename = CsvService.generateOutputFilename(filename);
+    const outputPath = path.join(config.server.downloadDir, outputFilename);
     
-    // 检查源语言列是否存在
-    if (!csvData.headers.includes(sourceLanguage)) {
-      return res.status(400).json({ error: `源语言列 '${sourceLanguage}' 不存在` });
+    // 读取CSV文件，跳过第一行数据
+    const { headers, data } = await CsvService.readCsvFile(inputPath, true);
+    
+    if (columnIndex >= headers.length) {
+      return res.status(400).json({ error: '列索引超出范围' });
     }
     
-    // 添加缺失的语言列到headers
-    const newHeaders = [...csvData.headers];
-    targetLanguages.forEach(lang => {
-      if (!newHeaders.includes(lang)) {
-        newHeaders.push(lang);
-      }
-    });
+    const columnName = headers[columnIndex];
+    const textsToTranslate = data.map(row => row[columnName]).filter(text => text && text.trim() !== '');
     
-    // 执行翻译
-    const translatedData = [];
-    const totalRows = csvData.data.length;
+    if (textsToTranslate.length === 0) {
+      return res.status(400).json({ error: '没有找到需要翻译的文本' });
+    }
     
-    for (let i = 0; i < csvData.data.length; i++) {
-      const row = csvData.data[i];
-      const newRow = { ...row };
-      
-      const sourceText = row[sourceLanguage];
-      if (sourceText && sourceText.trim() !== '') {
-        for (const targetLang of targetLanguages) {
-          if (targetLang !== sourceLanguage && (!row[targetLang] || row[targetLang].trim() === '')) {
-            console.log(`翻译第${i+1}行: ${sourceLanguage} -> ${targetLang}`);
-            const translatedText = await translateText(sourceText, sourceLanguage, targetLang);
-            newRow[targetLang] = translatedText;
-            
-            // 添加小延迟避免API限流
-            await new Promise(resolve => setTimeout(resolve, 100));
-          }
-        }
+    // 批量翻译
+    let translatedCount = 0;
+    const translatedTexts = await translationService.translateBatch(
+      textsToTranslate,
+      sourceLanguage,
+      targetLanguage,
+      (progress) => {
+        translatedCount = progress.completed;
+        console.log(`翻译进度: ${progress.completed}/${progress.total} (${progress.percentage.toFixed(1)}%)`);
       }
-      
-      translatedData.push(newRow);
-      
-      // 发送进度更新（这里简化处理，实际项目中可以使用WebSocket）
-      if (i % 10 === 0) {
-        console.log(`翻译进度: ${i + 1}/${totalRows}`);
+    );
+    
+    // 更新数据
+    let textIndex = 0;
+    for (let i = 0; i < data.length; i++) {
+      const originalText = data[i][columnName];
+      if (originalText && originalText.trim() !== '') {
+        data[i][columnName] = translatedTexts[textIndex];
+        textIndex++;
       }
     }
     
-    // 保存翻译后的文件
-    const outputFileName = `translated_${Date.now()}_${fileName}`;
-    const outputPath = path.join('downloads', outputFileName);
-    
-    await writeCsvFile(outputPath, newHeaders, translatedData);
+    // 写入翻译后的CSV文件
+    await CsvService.writeCsvFile(outputPath, headers, data);
     
     res.json({
-      success: true,
       message: '翻译完成',
-      downloadFileName: outputFileName,
-      translatedRows: totalRows
+      downloadFilename: outputFilename,
+      totalRows: data.length,
+      translatedCount: translatedCount
     });
     
   } catch (error) {
-    console.error('翻译处理失败:', error);
+    console.error('翻译过程中出错:', error);
     res.status(500).json({ error: '翻译失败: ' + error.message });
   }
 });
 
 // 下载翻译后的文件
-app.get('/api/download/:fileName', (req, res) => {
-  const fileName = req.params.fileName;
-  const filePath = path.join('downloads', fileName);
+app.get('/api/download/:filename', (req, res) => {
+  const filename = req.params.filename;
+  const filePath = path.join(config.server.downloadDir, filename);
   
   if (!fs.existsSync(filePath)) {
     return res.status(404).json({ error: '文件不存在' });
   }
   
-  res.download(filePath, fileName, (err) => {
+  res.download(filePath, filename, (err) => {
     if (err) {
       console.error('文件下载失败:', err);
       res.status(500).json({ error: '文件下载失败' });
+    } else {
+      // 下载完成后清理临时文件
+      setTimeout(() => {
+        CsvService.cleanupTempFiles([filePath]);
+      }, 60000); // 1分钟后删除
     }
   });
 });
 
+// 清理临时文件的API
+app.post('/api/cleanup', (req, res) => {
+  try {
+    const { files } = req.body;
+    if (files && Array.isArray(files)) {
+      const filePaths = files.map(f => path.join(config.server.uploadDir, f));
+      CsvService.cleanupTempFiles(filePaths);
+    }
+    res.json({ message: '清理完成' });
+  } catch (error) {
+    console.error('清理文件失败:', error);
+    res.status(500).json({ error: '清理失败' });
+  }
+});
+
+// 获取文件信息
+app.get('/api/file-info/:filename', async (req, res) => {
+  try {
+    const filename = req.params.filename;
+    const filePath = path.join(config.server.uploadDir, filename);
+    
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: '文件不存在' });
+    }
+    
+    const fileSize = await CsvService.getFileSize(filePath);
+    const structure = await CsvService.analyzeCsvStructure(filePath);
+    
+    res.json({
+      filename,
+      fileSize,
+      structure
+    });
+  } catch (error) {
+    console.error('获取文件信息失败:', error);
+    res.status(500).json({ error: '获取文件信息失败' });
+  }
+});
+
 // 启动服务器
-app.listen(PORT, () => {
-  console.log(`CSV翻译服务器运行在 http://localhost:${PORT}`);
-  console.log('请确保已配置腾讯云翻译API密钥');
+app.listen(config.server.port, () => {
+  console.log(`服务器运行在 http://localhost:${config.server.port}`);
+  console.log('请确保已在.env文件中配置腾讯云翻译API密钥');
+  console.log(`上传目录: ${config.server.uploadDir}`);
+  console.log(`下载目录: ${config.server.downloadDir}`);
+  console.log(`支持的语言数量: ${Object.keys(config.supportedLanguages).length}`);
 });
 
 module.exports = app;
