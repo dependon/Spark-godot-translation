@@ -75,7 +75,7 @@ class CSVTranslator {
             const languageItem = document.createElement('div');
             languageItem.className = 'language-item';
             languageItem.innerHTML = `
-                <input type="checkbox" id="lang_${code}" value="${code}">
+                <input type="checkbox" id="lang_${code}" value="${code}" checked>
                 <label for="lang_${code}">${name} (${code})</label>
             `;
             languageGrid.appendChild(languageItem);

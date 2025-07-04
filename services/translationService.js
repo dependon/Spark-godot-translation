@@ -10,8 +10,9 @@ class BaiduTranslationService {
         // 百度翻译支持的28种语言
         this.supportedLanguages = {
             'auto': '自动检测',
-            'zh': '中文',
             'en': '英语',
+            'zh': '中文',
+            'cht': '繁体中文',
             'yue': '粤语',
             'wyw': '文言文',
             'jp': '日语',
