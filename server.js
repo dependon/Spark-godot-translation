@@ -217,33 +217,33 @@ app.post('/api/translate', upload.single('csvFile'), async (req, res) => {
             });
 
             if (textsToTranslate.length > 0) {
-                // 使用智能批量翻译
-                const translations = await translationService.translateBatchSmart(
+                // 使用实时反馈翻译，每翻译一个文本立即反馈
+                const sessionSocket = sessionInfo.get(sessionId);
+                
+                const translations = await translationService.translateWithRealTimeFeedback(
                     textsToTranslate,
                     'auto',
-                    targetLang
-                );
-
-                // 更新翻译结果
-                translations.forEach((translation, i) => {
-                    const dataIndex = indices[i];
-                    const originalText = textsToTranslate[i];
-                    data[dataIndex][targetLang] = translation;
-                    completedTranslations++;
-                    
-                    // 发送实时翻译日志到特定会话的客户端
-                    const sessionSocket = sessionInfo.get(sessionId);
-                    if (sessionSocket) {
-                        sessionSocket.emit('translationLog', {
-                            originalText,
-                            translatedText: translation,
-                            targetLanguage: targetLang,
-                            status: 'success',
-                            progress: Math.round((completedTranslations / totalTranslations) * 100),
-                            sessionId: sessionId
-                        });
+                    targetLang,
+                    (feedback) => {
+                        // 实时反馈回调函数
+                        const dataIndex = indices[feedback.index];
+                        data[dataIndex][targetLang] = feedback.translatedText;
+                        completedTranslations++;
+                        
+                        // 立即发送翻译日志到客户端
+                        if (sessionSocket) {
+                            sessionSocket.emit('translationLog', {
+                                originalText: feedback.originalText,
+                                translatedText: feedback.translatedText,
+                                targetLanguage: targetLang,
+                                status: feedback.error ? 'error' : 'success',
+                                progress: Math.round((completedTranslations / totalTranslations) * 100),
+                                sessionId: sessionId,
+                                error: feedback.error
+                            });
+                        }
                     }
-                });
+                );
             }
             
             console.log(`${targetLang} 翻译完成`);

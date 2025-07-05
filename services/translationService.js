@@ -202,6 +202,48 @@ class BaiduTranslationService {
         }
     }
 
+    // 实时反馈翻译（每翻译一个文本立即反馈）
+    async translateWithRealTimeFeedback(texts, from = 'auto', to = 'zh', progressCallback = null) {
+        const results = [];
+        
+        console.log(`开始实时翻译${texts.length}个文本，无延迟模式`);
+        
+        for (let i = 0; i < texts.length; i++) {
+            try {
+                const result = await this.translateText(texts[i], from, to);
+                results.push(result);
+                
+                // 立即反馈进度
+                if (progressCallback) {
+                    progressCallback({
+                        index: i,
+                        total: texts.length,
+                        originalText: texts[i],
+                        translatedText: result,
+                        progress: ((i + 1) / texts.length * 100).toFixed(1)
+                    });
+                }
+            } catch (error) {
+                console.error(`翻译第${i+1}项失败:`, error.message);
+                results.push(texts[i]); // 失败时保持原文
+                
+                // 即使失败也要反馈进度
+                if (progressCallback) {
+                    progressCallback({
+                        index: i,
+                        total: texts.length,
+                        originalText: texts[i],
+                        translatedText: texts[i],
+                        progress: ((i + 1) / texts.length * 100).toFixed(1),
+                        error: error.message
+                    });
+                }
+            }
+        }
+        
+        return results;
+    }
+
     // 获取支持的语言列表
     getSupportedLanguages() {
         return this.supportedLanguages;
