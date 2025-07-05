@@ -205,8 +205,9 @@ class BaiduTranslationService {
     // 实时反馈翻译（每翻译一个文本立即反馈）
     async translateWithRealTimeFeedback(texts, from = 'auto', to = 'zh', progressCallback = null) {
         const results = [];
+        const delay = 50; // 100ms延迟，避免API频率限制
         
-        console.log(`开始实时翻译${texts.length}个文本，无延迟模式`);
+        console.log(`开始实时翻译${texts.length}个文本，延迟${delay}ms避免API限制`);
         
         for (let i = 0; i < texts.length; i++) {
             try {
@@ -223,6 +224,11 @@ class BaiduTranslationService {
                         progress: ((i + 1) / texts.length * 100).toFixed(1)
                     });
                 }
+                
+                // 添加延迟避免API频率限制
+                if (i < texts.length - 1) {
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                }
             } catch (error) {
                 console.error(`翻译第${i+1}项失败:`, error.message);
                 results.push(texts[i]); // 失败时保持原文
@@ -237,6 +243,11 @@ class BaiduTranslationService {
                         progress: ((i + 1) / texts.length * 100).toFixed(1),
                         error: error.message
                     });
+                }
+                
+                // 失败时也要延迟，避免连续错误
+                if (i < texts.length - 1) {
+                    await new Promise(resolve => setTimeout(resolve, delay));
                 }
             }
         }
