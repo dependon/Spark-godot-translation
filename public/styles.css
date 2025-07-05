@@ -396,6 +396,33 @@ footer {
     font-size: 14px;
 }
 
+.btn-info {
+    background: linear-gradient(135deg, #17a2b8, #138496);
+    color: white;
+}
+
+.btn-info:hover {
+    background: linear-gradient(135deg, #138496, #117a8b);
+    transform: translateY(-2px);
+}
+
+.btn-warning {
+    background: linear-gradient(135deg, #ffc107, #e0a800);
+    color: #212529;
+}
+
+.btn-warning:hover {
+    background: linear-gradient(135deg, #e0a800, #d39e00);
+    transform: translateY(-2px);
+}
+
+.cache-controls {
+    margin: 10px 0;
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
 .translation-log {
     height: 300px;
     overflow-y: auto;
@@ -479,6 +506,53 @@ footer {
 
 .translation-log::-webkit-scrollbar-thumb:hover {
     background: #a8a8a8;
+}
+
+/* 缓存统计信息样式 */
+.cache-stats {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 20px;
+    border-radius: 10px;
+    margin-top: 15px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+}
+
+.cache-stats h4 {
+    margin: 0 0 15px 0;
+    font-size: 1.2em;
+}
+
+.cache-stats ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.cache-stats li {
+    margin: 8px 0;
+    padding: 5px 0;
+}
+
+.cache-stats .highlight {
+    background: rgba(255,255,255,0.2);
+    padding: 2px 8px;
+    border-radius: 15px;
+    font-weight: bold;
+}
+
+.performance-note {
+    margin: 15px 0 0 0;
+    font-style: italic;
+    opacity: 0.9;
+    font-size: 0.9em;
+}
+
+.result-stats {
+    background: #f8f9fa;
+    padding: 15px;
+    border-radius: 8px;
+    border-left: 4px solid #28a745;
 }
 
 /* 会话显示样式 */

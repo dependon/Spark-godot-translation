@@ -31,6 +31,12 @@ class CSVTranslator {
         
         // 清空日志按钮
         document.getElementById('clearLogBtn').addEventListener('click', () => this.clearTranslationLog());
+        
+        // 缓存统计按钮
+        document.getElementById('cacheStatsBtn')?.addEventListener('click', () => this.showCacheStats());
+        
+        // 清理缓存按钮
+        document.getElementById('clearCacheBtn')?.addEventListener('click', () => this.clearCache());
     }
 
     setupDragAndDrop() {
@@ -300,14 +306,35 @@ class CSVTranslator {
         const resultSection = document.getElementById('resultSection');
         const resultInfo = document.getElementById('resultInfo');
         
+        // 构建缓存统计信息
+        let cacheStatsHtml = '';
+        if (resultData.cacheStats) {
+            const stats = resultData.cacheStats;
+            cacheStatsHtml = `
+                <div class="cache-stats">
+                    <h4>🚀 性能优化统计</h4>
+                    <ul>
+                        <li><strong>总请求数:</strong> ${stats.totalRequests}</li>
+                        <li><strong>缓存命中:</strong> ${stats.cacheHits}</li>
+                        <li><strong>缓存命中率:</strong> <span class="highlight">${stats.hitRate}</span></li>
+                        <li><strong>缓存大小:</strong> ${stats.cacheSize} 条记录</li>
+                    </ul>
+                    <p class="performance-note">💡 缓存命中率越高，翻译速度越快！</p>
+                </div>
+            `;
+        }
+        
         resultInfo.innerHTML = `
             <h3>翻译完成!</h3>
-            <ul>
-                <li><strong>翻译行数:</strong> ${resultData.translatedRows}</li>
-                <li><strong>翻译语言数:</strong> ${resultData.translatedLanguages}</li>
-                <li><strong>总翻译数:</strong> ${resultData.totalTranslations}</li>
-                <li><strong>文件名:</strong> ${resultData.fileName}</li>
-            </ul>
+            <div class="result-stats">
+                <ul>
+                    <li><strong>翻译行数:</strong> ${resultData.translatedRows}</li>
+                    <li><strong>翻译语言数:</strong> ${resultData.translatedLanguages}</li>
+                    <li><strong>总翻译数:</strong> ${resultData.totalTranslations}</li>
+                    <li><strong>文件名:</strong> ${resultData.fileName}</li>
+                </ul>
+            </div>
+            ${cacheStatsHtml}
         `;
         
         // 保存下载URL
@@ -467,6 +494,56 @@ class CSVTranslator {
                  this.sessionId = null;
                  this.updateSessionDisplay();
              });
+         }
+     }
+
+     // 显示缓存统计信息
+     async showCacheStats() {
+         if (!this.sessionId) {
+             this.showMessage('会话未初始化', 'error');
+             return;
+         }
+         
+         try {
+             const response = await fetch(`/api/cache/stats/${this.sessionId}`);
+             const data = await response.json();
+             
+             if (data.success) {
+                 const stats = data.data;
+                 const message = `缓存统计:\n总请求: ${stats.totalRequests}\n缓存命中: ${stats.cacheHits}\n命中率: ${stats.hitRate}\n缓存大小: ${stats.cacheSize} 条记录`;
+                 alert(message);
+             } else {
+                 this.showMessage(data.message, 'error');
+             }
+         } catch (error) {
+             this.showMessage('获取缓存统计失败: ' + error.message, 'error');
+         }
+     }
+     
+     // 清理缓存
+     async clearCache() {
+         if (!this.sessionId) {
+             this.showMessage('会话未初始化', 'error');
+             return;
+         }
+         
+         if (!confirm('确定要清理翻译缓存吗？这将删除所有已缓存的翻译结果。')) {
+             return;
+         }
+         
+         try {
+             const response = await fetch(`/api/cache/clear/${this.sessionId}`, {
+                 method: 'POST'
+             });
+             const data = await response.json();
+             
+             if (data.success) {
+                 this.showMessage('缓存已清理', 'success');
+             } else {
+                 this.showMessage(data.message, 'error');
+             }
+         } catch (error) {
+             this.showMessage('清理缓存失败: ' + error.message, 'error');
          }
      }
 

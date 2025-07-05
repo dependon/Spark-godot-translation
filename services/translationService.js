@@ -7,6 +7,11 @@ class BaiduTranslationService {
         this.secretKey = secretKey;
         this.apiUrl = 'https://fanyi-api.baidu.com/api/trans/vip/translate';
         
+        // 翻译缓存
+        this.translationCache = new Map();
+        this.cacheHits = 0;
+        this.totalRequests = 0;
+        
         // 百度翻译支持的28种语言
         this.supportedLanguages = {
             'auto': '自动检测',
@@ -47,10 +52,24 @@ class BaiduTranslationService {
         return crypto.createHash('md5').update(str).digest('hex');
     }
 
-    // 翻译单个文本
+    // 生成缓存键
+    getCacheKey(text, from, to) {
+        return `${from}-${to}-${text.trim()}`;
+    }
+
+    // 翻译单个文本（带缓存）
     async translateText(text, from = 'auto', to = 'zh') {
         if (!text || text.trim() === '') {
             return text;
+        }
+
+        this.totalRequests++;
+        
+        // 检查缓存
+        const cacheKey = this.getCacheKey(text, from, to);
+        if (this.translationCache.has(cacheKey)) {
+            this.cacheHits++;
+            return this.translationCache.get(cacheKey);
         }
 
         const salt = Date.now().toString();
@@ -72,7 +91,12 @@ class BaiduTranslationService {
                 throw new Error(`翻译错误: ${response.data.error_msg}`);
             }
 
-            return response.data.trans_result[0].dst;
+            const result = response.data.trans_result[0].dst;
+            
+            // 存储到缓存
+            this.translationCache.set(cacheKey, result);
+            
+            return result;
         } catch (error) {
             console.error('翻译失败:', error.message);
             throw error;
@@ -101,6 +125,83 @@ class BaiduTranslationService {
         return results;
     }
 
+    // 并发批量翻译（优化版本）
+    async translateBatchConcurrent(texts, from = 'auto', to = 'zh', concurrency = 3, delay = 500) {
+        const results = new Array(texts.length);
+        const chunks = [];
+        
+        // 将文本分组以控制并发数
+        for (let i = 0; i < texts.length; i += concurrency) {
+            chunks.push(texts.slice(i, i + concurrency));
+        }
+        
+        let processedCount = 0;
+        
+        for (const chunk of chunks) {
+            // 并发处理当前块
+            const promises = chunk.map(async (text, index) => {
+                const globalIndex = processedCount + index;
+                try {
+                    const result = await this.translateText(text, from, to);
+                    results[globalIndex] = result;
+                    return result;
+                } catch (error) {
+                    console.error(`翻译第${globalIndex + 1}项失败:`, error.message);
+                    results[globalIndex] = text; // 失败时保持原文
+                    return text;
+                }
+            });
+            
+            await Promise.all(promises);
+            processedCount += chunk.length;
+            
+            // 在处理下一个块之前添加延迟
+            if (processedCount < texts.length) {
+                await new Promise(resolve => setTimeout(resolve, delay));
+            }
+        }
+        
+        return results;
+    }
+
+    // 智能批量翻译（根据文本长度和数量选择策略）
+    async translateBatchSmart(texts, from = 'auto', to = 'zh', progressCallback = null) {
+        const totalTexts = texts.length;
+        const avgLength = texts.reduce((sum, text) => sum + text.length, 0) / totalTexts;
+        
+        // 根据文本数量和平均长度选择策略
+        let strategy, concurrency, delay;
+        
+        if (totalTexts <= 10) {
+            // 少量文本：串行处理，较短延迟
+            strategy = 'serial';
+            delay = 300;
+        } else if (totalTexts <= 50 && avgLength <= 100) {
+            // 中等数量短文本：中等并发
+            strategy = 'concurrent';
+            concurrency = 3;
+            delay = 400;
+        } else if (totalTexts <= 100) {
+            // 较多文本：低并发
+            strategy = 'concurrent';
+            concurrency = 2;
+            delay = 600;
+        } else {
+            // 大量文本：最低并发，较长延迟
+            strategy = 'concurrent';
+            concurrency = 2;
+            delay = 800;
+        }
+        
+        console.log(`使用${strategy}策略翻译${totalTexts}个文本，平均长度：${avgLength.toFixed(1)}字符`);
+        
+        if (strategy === 'serial') {
+            return await this.translateBatch(texts, from, to, delay);
+        } else {
+            return await this.translateBatchConcurrent(texts, from, to, concurrency, delay);
+        }
+    }
+
     // 获取支持的语言列表
     getSupportedLanguages() {
         return this.supportedLanguages;
@@ -109,6 +210,32 @@ class BaiduTranslationService {
     // 检查语言代码是否支持
     isLanguageSupported(langCode) {
         return langCode in this.supportedLanguages;
+    }
+
+    // 获取缓存统计信息
+    getCacheStats() {
+        const hitRate = this.totalRequests > 0 ? (this.cacheHits / this.totalRequests * 100).toFixed(2) : 0;
+        return {
+            totalRequests: this.totalRequests,
+            cacheHits: this.cacheHits,
+            hitRate: `${hitRate}%`,
+            cacheSize: this.translationCache.size
+        };
+    }
+
+    // 清理缓存
+    clearCache() {
+        this.translationCache.clear();
+        this.cacheHits = 0;
+        this.totalRequests = 0;
+    }
+
+    // 预热缓存（批量添加常用翻译）
+    preloadCache(translations) {
+        translations.forEach(({ text, from, to, translation }) => {
+            const cacheKey = this.getCacheKey(text, from, to);
+            this.translationCache.set(cacheKey, translation);
+        });
     }
 }
 

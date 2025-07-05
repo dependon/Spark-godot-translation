@@ -217,12 +217,11 @@ app.post('/api/translate', upload.single('csvFile'), async (req, res) => {
             });
 
             if (textsToTranslate.length > 0) {
-                // 批量翻译
-                const translations = await translationService.translateBatch(
+                // 使用智能批量翻译
+                const translations = await translationService.translateBatchSmart(
                     textsToTranslate,
                     'auto',
-                    targetLang,
-                    1200 // 1.2秒延迟避免频率限制
+                    targetLang
                 );
 
                 // 更新翻译结果
@@ -257,6 +256,9 @@ app.post('/api/translate', upload.single('csvFile'), async (req, res) => {
         // 清理上传的临时文件
         csvService.cleanupFile(filePath);
         
+        // 获取缓存统计信息
+        const cacheStats = translationService.getCacheStats();
+        
         res.json({
             success: true,
             message: '翻译完成',
@@ -265,7 +267,8 @@ app.post('/api/translate', upload.single('csvFile'), async (req, res) => {
                 downloadUrl: `/api/download/${outputFileName}`,
                 translatedRows: data.length,
                 translatedLanguages: targetLangs.length,
-                totalTranslations: completedTranslations
+                totalTranslations: completedTranslations,
+                cacheStats: cacheStats
             }
         });
         
@@ -298,6 +301,44 @@ app.get('/api/download/:filename', (req, res) => {
                 message: '下载失败'
             });
         }
+    });
+});
+
+// 获取缓存统计信息
+app.get('/api/cache/stats/:sessionId', (req, res) => {
+    const { sessionId } = req.params;
+    
+    const translationService = sessionTranslationServices.get(sessionId);
+    if (!translationService) {
+        return res.status(400).json({
+            success: false,
+            message: '会话不存在或未配置翻译服务'
+        });
+    }
+    
+    const stats = translationService.getCacheStats();
+    res.json({
+        success: true,
+        data: stats
+    });
+});
+
+// 清理缓存
+app.post('/api/cache/clear/:sessionId', (req, res) => {
+    const { sessionId } = req.params;
+    
+    const translationService = sessionTranslationServices.get(sessionId);
+    if (!translationService) {
+        return res.status(400).json({
+            success: false,
+            message: '会话不存在或未配置翻译服务'
+        });
+    }
+    
+    translationService.clearCache();
+    res.json({
+        success: true,
+        message: '缓存已清理'
     });
 });
 
