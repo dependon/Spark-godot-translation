@@ -594,3 +594,19 @@ footer {
     content: '🔗';
     font-size: 16px;
 }
+
+/* API链接样式 */
+.api-link {
+    font-size: 0.9em;
+    margin-top: 10px;
+    text-align: center;
+}
+
+.api-link a {
+    color: #007bff;
+    text-decoration: none;
+}
+
+.api-link a:hover {
+    text-decoration: underline;
+}
