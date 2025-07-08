@@ -389,14 +389,15 @@ class CSVTranslator {
     }
 
     // 翻译日志相关方法
-    addTranslationLog(originalText, translatedText, targetLanguage, status = 'success') {
+    addTranslationLog(originalText, translatedText, targetLanguage, status = 'success', error = null) {
         const timestamp = new Date().toLocaleTimeString();
         const logEntry = {
             timestamp,
             originalText,
             translatedText,
             targetLanguage,
-            status
+            status,
+            error
         };
         
         this.translationLog.push(logEntry);
@@ -411,12 +412,19 @@ class CSVTranslator {
         
         const languageName = this.supportedLanguages[logEntry.targetLanguage] || logEntry.targetLanguage;
         
+        // 构建错误信息显示
+        let errorHtml = '';
+        if (logEntry.error && logEntry.status === 'error') {
+            errorHtml = `<div class="log-error">❌ 错误: ${this.escapeHtml(logEntry.error)}</div>`;
+        }
+        
         logElement.innerHTML = `
             <div class="log-timestamp">${logEntry.timestamp}</div>
             <div class="log-content">
                 <div><span class="log-original">原文:</span> ${this.escapeHtml(logEntry.originalText)}</div>
                 <div><span class="log-translated">译文:</span> ${this.escapeHtml(logEntry.translatedText)}</div>
                 <div class="log-language">目标语言: ${languageName} (${logEntry.targetLanguage})</div>
+                ${errorHtml}
             </div>
         `;
         
@@ -479,13 +487,25 @@ class CSVTranslator {
                          logData.originalText,
                          logData.translatedText,
                          logData.targetLanguage,
-                         logData.status
+                         logData.status,
+                         logData.error
                      );
                      
-                     // 更新进度
+                     // 更新进度（无论成功还是失败都要更新）
                      if (logData.progress !== undefined) {
-                         this.updateProgress(logData.progress, `翻译进度: ${logData.progress}%`);
+                         const progressText = logData.status === 'error' ? 
+                             `翻译进度: ${logData.progress}% (有错误)` : 
+                             `翻译进度: ${logData.progress}%`;
+                         this.updateProgress(logData.progress, progressText);
                      }
+                 }
+             });
+             
+             // 监听翻译完成事件
+             this.socket.on('translationComplete', (data) => {
+                 if (data.sessionId === this.sessionId) {
+                     console.log('翻译任务完成:', data.message);
+                     this.updateProgress(100, '翻译任务完成!');
                  }
              });
              

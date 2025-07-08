@@ -195,6 +195,7 @@ app.post('/api/translate', upload.single('csvFile'), async (req, res) => {
         // 翻译进度跟踪
         let completedTranslations = 0;
         const totalTranslations = targetLangs.length * sourceTexts.length;
+        const sessionSocket = sessionInfo.get(sessionId);
         
         // 为每种目标语言进行翻译
         for (const targetLang of targetLangs) {
@@ -204,60 +205,122 @@ app.post('/api/translate', upload.single('csvFile'), async (req, res) => {
 
             console.log(`开始翻译到 ${targetLang}...`);
             
-            // 筛选需要翻译的文本
-            const textsToTranslate = [];
-            const indices = [];
-            
-            sourceTexts.forEach((text, index) => {
-                const existingTranslation = data[index][targetLang];
-                if (csvService.needsTranslation(existingTranslation, forceRetranslate === 'true')) {
-                    textsToTranslate.push(text);
-                    indices.push(index);
-                }
-            });
-
-            if (textsToTranslate.length > 0) {
-                // 使用实时反馈翻译，每翻译一个文本立即反馈
-                const sessionSocket = sessionInfo.get(sessionId);
+            try {
+                // 筛选需要翻译的文本
+                const textsToTranslate = [];
+                const indices = [];
                 
-                const translations = await translationService.translateWithRealTimeFeedback(
-                    textsToTranslate,
-                    'auto',
-                    targetLang,
-                    (feedback) => {
-                        // 实时反馈回调函数
-                        const dataIndex = indices[feedback.index];
-                        data[dataIndex][targetLang] = feedback.translatedText;
-                        completedTranslations++;
-                        
-                        // 立即发送翻译日志到客户端
-                        if (sessionSocket) {
-                            sessionSocket.emit('translationLog', {
-                                originalText: feedback.originalText,
-                                translatedText: feedback.translatedText,
-                                targetLanguage: targetLang,
-                                status: feedback.error ? 'error' : 'success',
-                                progress: Math.round((completedTranslations / totalTranslations) * 100),
-                                sessionId: sessionId,
-                                error: feedback.error
-                            });
-                        }
+                sourceTexts.forEach((text, index) => {
+                    const existingTranslation = data[index][targetLang];
+                    if (csvService.needsTranslation(existingTranslation, forceRetranslate === 'true')) {
+                        textsToTranslate.push(text);
+                        indices.push(index);
                     }
-                );
+                });
+
+                if (textsToTranslate.length > 0) {
+                    // 使用实时反馈翻译，每翻译一个文本立即反馈
+                    const translations = await translationService.translateWithRealTimeFeedback(
+                        textsToTranslate,
+                        'auto',
+                        targetLang,
+                        (feedback) => {
+                            // 实时反馈回调函数
+                            const dataIndex = indices[feedback.index];
+                            data[dataIndex][targetLang] = feedback.translatedText;
+                            completedTranslations++;
+                            
+                            // 立即发送翻译日志到客户端
+                            if (sessionSocket) {
+                                sessionSocket.emit('translationLog', {
+                                    originalText: feedback.originalText,
+                                    translatedText: feedback.translatedText,
+                                    targetLanguage: targetLang,
+                                    status: feedback.error ? 'error' : 'success',
+                                    progress: Math.round((completedTranslations / totalTranslations) * 100),
+                                    sessionId: sessionId,
+                                    error: feedback.error
+                                });
+                            }
+                        }
+                    );
+                } else {
+                    // 如果没有需要翻译的文本，也要更新进度
+                    const skippedCount = sourceTexts.length;
+                    completedTranslations += skippedCount;
+                    if (sessionSocket) {
+                        sessionSocket.emit('translationLog', {
+                            originalText: `跳过${skippedCount}个已翻译的文本`,
+                            translatedText: `${targetLang}语言列已存在翻译`,
+                            targetLanguage: targetLang,
+                            status: 'success',
+                            progress: Math.round((completedTranslations / totalTranslations) * 100),
+                            sessionId: sessionId
+                        });
+                    }
+                }
+                
+                console.log(`${targetLang} 翻译完成`);
+            } catch (error) {
+                console.error(`翻译到 ${targetLang} 时发生错误:`, error.message);
+                
+                // 即使翻译失败，也要更新进度并继续处理下一个语言
+                const remainingCount = sourceTexts.length;
+                completedTranslations += remainingCount;
+                
+                if (sessionSocket) {
+                    sessionSocket.emit('translationLog', {
+                        originalText: `翻译到${targetLang}失败`,
+                        translatedText: `错误: ${error.message}`,
+                        targetLanguage: targetLang,
+                        status: 'error',
+                        progress: Math.round((completedTranslations / totalTranslations) * 100),
+                        sessionId: sessionId,
+                        error: error.message
+                    });
+                }
+                
+                console.log(`${targetLang} 翻译失败，继续处理下一个语言`);
             }
-            
-            console.log(`${targetLang} 翻译完成`);
         }
 
-        // 生成输出文件
+        // 无论翻译过程中是否有错误，都生成输出文件
         const outputFileName = `translated_${Date.now()}.csv`;
-        const outputPath = await csvService.generateCSV(data, headers, outputFileName);
+        let outputPath;
+        
+        try {
+            outputPath = await csvService.generateCSV(data, headers, outputFileName);
+            console.log(`CSV文件生成成功: ${outputFileName}`);
+        } catch (csvError) {
+            console.error('CSV文件生成失败:', csvError.message);
+            // 即使CSV生成失败，也要清理临时文件并返回错误信息
+            csvService.cleanupFile(filePath);
+            return res.status(500).json({
+                success: false,
+                message: `CSV文件生成失败: ${csvError.message}`,
+                data: {
+                    translatedRows: data.length,
+                    translatedLanguages: targetLangs.length,
+                    totalTranslations: completedTranslations
+                }
+            });
+        }
         
         // 清理上传的临时文件
         csvService.cleanupFile(filePath);
         
         // 获取缓存统计信息
         const cacheStats = translationService.getCacheStats();
+        
+        // 发送最终完成状态到客户端
+        if (sessionSocket) {
+            sessionSocket.emit('translationComplete', {
+                sessionId: sessionId,
+                fileName: outputFileName,
+                totalTranslations: completedTranslations,
+                message: '翻译任务完成，CSV文件已生成'
+            });
+        }
         
         res.json({
             success: true,

@@ -205,53 +205,57 @@ class BaiduTranslationService {
     // 实时反馈翻译（每翻译一个文本立即反馈）
     async translateWithRealTimeFeedback(texts, from = 'auto', to = 'zh', progressCallback = null) {
         const results = [];
-        const delay = 50; // 100ms延迟，避免API频率限制
+        const delay = 50; // 50ms延迟，避免API频率限制
+        let successCount = 0;
+        let errorCount = 0;
         
         console.log(`开始实时翻译${texts.length}个文本，延迟${delay}ms避免API限制`);
         
         for (let i = 0; i < texts.length; i++) {
+            let translatedText = texts[i]; // 默认保持原文
+            let hasError = false;
+            let errorMessage = null;
+            
             try {
-                const result = await this.translateText(texts[i], from, to);
-                results.push(result);
-                
-                // 立即反馈进度
-                if (progressCallback) {
-                    progressCallback({
-                        index: i,
-                        total: texts.length,
-                        originalText: texts[i],
-                        translatedText: result,
-                        progress: ((i + 1) / texts.length * 100).toFixed(1)
-                    });
-                }
-                
-                // 添加延迟避免API频率限制
-                if (i < texts.length - 1) {
-                    await new Promise(resolve => setTimeout(resolve, delay));
+                // 如果文本为空或只有空白字符，直接跳过翻译
+                if (!texts[i] || texts[i].trim() === '') {
+                    translatedText = texts[i];
+                } else {
+                    translatedText = await this.translateText(texts[i], from, to);
+                    successCount++;
                 }
             } catch (error) {
                 console.error(`翻译第${i+1}项失败:`, error.message);
-                results.push(texts[i]); // 失败时保持原文
-                
-                // 即使失败也要反馈进度
-                if (progressCallback) {
-                    progressCallback({
-                        index: i,
-                        total: texts.length,
-                        originalText: texts[i],
-                        translatedText: texts[i],
-                        progress: ((i + 1) / texts.length * 100).toFixed(1),
-                        error: error.message
-                    });
-                }
-                
-                // 失败时也要延迟，避免连续错误
-                if (i < texts.length - 1) {
-                    await new Promise(resolve => setTimeout(resolve, delay));
-                }
+                hasError = true;
+                errorMessage = error.message;
+                errorCount++;
+                // 保持原文作为翻译结果
+                translatedText = texts[i];
+            }
+            
+            results.push(translatedText);
+            
+            // 立即反馈进度（无论成功还是失败）
+            if (progressCallback) {
+                progressCallback({
+                    index: i,
+                    total: texts.length,
+                    originalText: texts[i],
+                    translatedText: translatedText,
+                    progress: ((i + 1) / texts.length * 100).toFixed(1),
+                    error: hasError ? errorMessage : null,
+                    successCount: successCount,
+                    errorCount: errorCount
+                });
+            }
+            
+            // 添加延迟避免API频率限制（无论成功还是失败）
+            if (i < texts.length - 1) {
+                await new Promise(resolve => setTimeout(resolve, delay));
             }
         }
         
+        console.log(`翻译完成: 成功${successCount}个，失败${errorCount}个，总计${texts.length}个`);
         return results;
     }
 

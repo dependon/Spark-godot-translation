@@ -478,6 +478,17 @@ footer {
     font-size: 12px;
 }
 
+.log-error {
+    color: #dc3545;
+    font-weight: 600;
+    font-size: 13px;
+    margin-top: 4px;
+    padding: 4px 8px;
+    background: rgba(220, 53, 69, 0.1);
+    border-radius: 4px;
+    border: 1px solid rgba(220, 53, 69, 0.2);
+}
+
 @keyframes slideIn {
     from {
         opacity: 0;
