@@ -87,7 +87,7 @@ class BaiduTranslationService {
         const response = await axios.get(this.apiUrl, { params });
         
         if (response.data.error_code) {
-            throw new Error(`翻译错误: ${response.data.error_msg}`);
+            //throw new Error(`翻译错误: ${response.data.error_msg}`);
         }
 
         const result = response.data.trans_result[0].dst;
