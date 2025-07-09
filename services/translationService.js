@@ -103,113 +103,14 @@ class BaiduTranslationService {
         }
     }
 
-    // 批量翻译（带延迟避免频率限制）
-    async translateBatch(texts, from = 'auto', to = 'zh', delay = 1000) {
-        const results = [];
-        
-        for (let i = 0; i < texts.length; i++) {
-            try {
-                const result = await this.translateText(texts[i], from, to);
-                results.push(result);
-                
-                // 添加延迟避免API频率限制
-                if (i < texts.length - 1) {
-                    await new Promise(resolve => setTimeout(resolve, delay));
-                }
-            } catch (error) {
-                console.error(`翻译第${i+1}项失败:`, error.message);
-                results.push(texts[i]); // 失败时保持原文
-            }
-        }
-        
-        return results;
-    }
-
-    // 并发批量翻译（优化版本）
-    async translateBatchConcurrent(texts, from = 'auto', to = 'zh', concurrency = 3, delay = 500) {
-        const results = new Array(texts.length);
-        const chunks = [];
-        
-        // 将文本分组以控制并发数
-        for (let i = 0; i < texts.length; i += concurrency) {
-            chunks.push(texts.slice(i, i + concurrency));
-        }
-        
-        let processedCount = 0;
-        
-        for (const chunk of chunks) {
-            // 并发处理当前块
-            const promises = chunk.map(async (text, index) => {
-                const globalIndex = processedCount + index;
-                try {
-                    const result = await this.translateText(text, from, to);
-                    results[globalIndex] = result;
-                    return result;
-                } catch (error) {
-                    console.error(`翻译第${globalIndex + 1}项失败:`, error.message);
-                    results[globalIndex] = text; // 失败时保持原文
-                    return text;
-                }
-            });
-            
-            await Promise.all(promises);
-            processedCount += chunk.length;
-            
-            // 在处理下一个块之前添加延迟
-            if (processedCount < texts.length) {
-                await new Promise(resolve => setTimeout(resolve, delay));
-            }
-        }
-        
-        return results;
-    }
-
-    // 智能批量翻译（根据文本长度和数量选择策略）
-    async translateBatchSmart(texts, from = 'auto', to = 'zh', progressCallback = null) {
-        const totalTexts = texts.length;
-        const avgLength = texts.reduce((sum, text) => sum + text.length, 0) / totalTexts;
-        
-        // 根据文本数量和平均长度选择策略
-        let strategy, concurrency, delay;
-        
-        if (totalTexts <= 10) {
-            // 少量文本：串行处理，较短延迟
-            strategy = 'serial';
-            delay = 300;
-        } else if (totalTexts <= 50 && avgLength <= 100) {
-            // 中等数量短文本：中等并发
-            strategy = 'concurrent';
-            concurrency = 3;
-            delay = 400;
-        } else if (totalTexts <= 100) {
-            // 较多文本：低并发
-            strategy = 'concurrent';
-            concurrency = 2;
-            delay = 600;
-        } else {
-            // 大量文本：最低并发，较长延迟
-            strategy = 'concurrent';
-            concurrency = 2;
-            delay = 800;
-        }
-        
-        console.log(`使用${strategy}策略翻译${totalTexts}个文本，平均长度：${avgLength.toFixed(1)}字符`);
-        
-        if (strategy === 'serial') {
-            return await this.translateBatch(texts, from, to, delay);
-        } else {
-            return await this.translateBatchConcurrent(texts, from, to, concurrency, delay);
-        }
-    }
-
-    // 实时反馈翻译（每翻译一个文本立即反馈）
-    async translateWithRealTimeFeedback(texts, from = 'auto', to = 'zh', progressCallback = null) {
+    // 直接翻译（逐个翻译，实时反馈）
+    async translateDirect(texts, from = 'auto', to = 'zh', progressCallback = null) {
         const results = [];
         const delay = 1; // 1ms延迟，避免API频率限制
-        let successCount = 0; // 初始化成功计数
-        let errorCount = 0;   // 初始化错误计数
+        let successCount = 0;
+        let errorCount = 0;
         
-        console.log(`开始实时翻译${texts.length}个文本，延迟${delay}ms避免API限制`);
+        console.log(`开始直接翻译${texts.length}个文本，延迟${delay}ms避免API限制`);
         
         for (let i = 0; i < texts.length; i++) {
             let translatedText = texts[i]; // 默认保持原文
@@ -278,6 +179,8 @@ class BaiduTranslationService {
         console.log(`翻译完成: 成功${successCount}个，失败${errorCount}个，总计${texts.length}个`);
         return results;
     }
+
+
 
     // 获取支持的语言列表
     getSupportedLanguages() {
