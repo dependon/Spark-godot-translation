@@ -252,8 +252,6 @@ class CSVTranslator {
         
         this.updateProgress(0, '准备开始翻译...');
         
-        // 清空之前的日志
-        this.clearTranslationLog();
         
         const formData = new FormData();
         formData.append('csvFile', this.currentFile);
@@ -281,12 +279,12 @@ class CSVTranslator {
         const data = await response.json();
         
         if (data.success) {
-            this.updateProgress(100, '翻译完成!');
+            this.updateProgress(1000, '翻译完成!');
             this.showResult(data.data);
         } else {
             this.showMessage(data.message, 'error');
             this.addTranslationLog('系统', data.message, '系统', 'error', data.message);
-            this.updateProgress(100, '翻译失败');
+            this.updateProgress(1000, '翻译失败');
         }
     }
 
