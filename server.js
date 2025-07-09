@@ -205,82 +205,69 @@ app.post('/api/translate', upload.single('csvFile'), async (req, res) => {
 
             console.log(`开始翻译到 ${targetLang}...`);
             
-            try {
-                // 筛选需要翻译的文本
-                const textsToTranslate = [];
-                const indices = [];
-                
-                sourceTexts.forEach((text, index) => {
-                    const existingTranslation = data[index][targetLang];
-                    if (csvService.needsTranslation(existingTranslation, forceRetranslate === 'true')) {
-                        textsToTranslate.push(text);
-                        indices.push(index);
-                    }
-                });
+            // 筛选需要翻译的文本
+            const textsToTranslate = [];
+            const indices = [];
+            
+            sourceTexts.forEach((text, index) => {
+                const existingTranslation = data[index][targetLang];
+                if (csvService.needsTranslation(existingTranslation, forceRetranslate === 'true')) {
+                    textsToTranslate.push(text);
+                    indices.push(index);
+                }
+            });
 
-                if (textsToTranslate.length > 0) {
+            if (textsToTranslate.length > 0) {
+                try {
                     // 使用实时反馈翻译，每翻译一个文本立即反馈
+                    const sessionSocket = sessionInfo.get(sessionId);
+                    
                     const translations = await translationService.translateWithRealTimeFeedback(
                         textsToTranslate,
                         'auto',
                         targetLang,
                         (feedback) => {
-                            // 实时反馈回调函数
-                            const dataIndex = indices[feedback.index];
-                            data[dataIndex][targetLang] = feedback.translatedText;
-                            completedTranslations++;
-                            
-                            // 立即发送翻译日志到客户端
-                            if (sessionSocket) {
-                                sessionSocket.emit('translationLog', {
-                                    originalText: feedback.originalText,
-                                    translatedText: feedback.translatedText,
-                                    targetLanguage: targetLang,
-                                    status: feedback.error ? 'error' : 'success',
-                                    progress: Math.round((completedTranslations / totalTranslations) * 100),
-                                    sessionId: sessionId,
-                                    error: feedback.error
-                                });
+                            try {
+                                // 实时反馈回调函数
+                                const dataIndex = indices[feedback.index];
+                                data[dataIndex][targetLang] = feedback.translatedText;
+                                completedTranslations++;
+                                
+                                // 立即发送翻译日志到客户端
+                                if (sessionSocket) {
+                                    sessionSocket.emit('translationLog', {
+                                        originalText: feedback.originalText,
+                                        translatedText: feedback.translatedText,
+                                        targetLanguage: targetLang,
+                                        status: feedback.error ? 'error' : 'success',
+                                        progress: Math.round((completedTranslations / totalTranslations) * 100),
+                                        sessionId: sessionId,
+                                        error: feedback.error
+                                    });
+                                }
+                            } catch (callbackError) {
+                                console.error('回调处理错误:', callbackError.message);
+                                // 即使回调出错，也要确保进度继续
+                                completedTranslations++;
                             }
                         }
                     );
-                } else {
-                    // 如果没有需要翻译的文本，也要更新进度
-                    const skippedCount = sourceTexts.length;
-                    completedTranslations += skippedCount;
+                } catch (translationError) {
+                    console.error(`翻译语言${targetLang}时出错:`, translationError.message);
+                    // 即使某个语言翻译失败，也要继续处理其他语言
+                    const sessionSocket = sessionInfo.get(sessionId);
                     if (sessionSocket) {
                         sessionSocket.emit('translationLog', {
-                            originalText: `跳过${skippedCount}个已翻译的文本`,
-                            translatedText: `${targetLang}语言列已存在翻译`,
+                            originalText: '批量翻译',
+                            translatedText: `语言${targetLang}翻译失败`,
                             targetLanguage: targetLang,
-                            status: 'success',
+                            status: 'error',
                             progress: Math.round((completedTranslations / totalTranslations) * 100),
-                            sessionId: sessionId
+                            sessionId: sessionId,
+                            error: translationError.message
                         });
                     }
                 }
-                
-                console.log(`${targetLang} 翻译完成`);
-            } catch (error) {
-                console.error(`翻译到 ${targetLang} 时发生错误:`, error.message);
-                
-                // 即使翻译失败，也要更新进度并继续处理下一个语言
-                const remainingCount = sourceTexts.length;
-                completedTranslations += remainingCount;
-                
-                if (sessionSocket) {
-                    sessionSocket.emit('translationLog', {
-                        originalText: `翻译到${targetLang}失败`,
-                        translatedText: `错误: ${error.message}`,
-                        targetLanguage: targetLang,
-                        status: 'error',
-                        progress: Math.round((completedTranslations / totalTranslations) * 100),
-                        sessionId: sessionId,
-                        error: error.message
-                    });
-                }
-                
-                console.log(`${targetLang} 翻译失败，继续处理下一个语言`);
             }
         }
 
