@@ -78,16 +78,12 @@ class CSVTranslator {
     }
 
     async loadSupportedLanguages() {
-        try {
-            const response = await fetch('/api/languages');
-            const data = await response.json();
-            
-            if (data.success) {
-                this.supportedLanguages = data.languages;
-                this.renderLanguageOptions();
-            }
-        } catch (error) {
-            console.error('加载语言列表失败:', error);
+        const response = await fetch('/api/languages');
+        const data = await response.json();
+        
+        if (data.success) {
+            this.supportedLanguages = data.languages;
+            this.renderLanguageOptions();
         }
     }
 
@@ -122,25 +118,21 @@ class CSVTranslator {
             return;
         }
         
-        try {
-            const response = await fetch('/api/config', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ appId, secretKey, sessionId: this.sessionId })
-            });
-            
-            const data = await response.json();
-            
-            if (data.success) {
-                this.apiConfigured = true;
-                this.showConfigMessage('API配置成功 (会话ID: ' + this.sessionId + ')', 'success');
-            } else {
-                this.showConfigMessage(data.message, 'error');
-            }
-        } catch (error) {
-            this.showConfigMessage('配置失败: ' + error.message, 'error');
+        const response = await fetch('/api/config', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ appId, secretKey, sessionId: this.sessionId })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            this.apiConfigured = true;
+            this.showConfigMessage('API配置成功 (会话ID: ' + this.sessionId + ')', 'success');
+        } else {
+            this.showConfigMessage(data.message, 'error');
         }
     }
 
@@ -160,24 +152,20 @@ class CSVTranslator {
         const formData = new FormData();
         formData.append('csvFile', file);
         
-        try {
-            const response = await fetch('/api/upload', {
-                method: 'POST',
-                body: formData
-            });
-            
-            const data = await response.json();
-            
-            if (data.success) {
-                this.currentFile = file;
-                this.displayFileInfo(data.data);
-                this.populateSourceColumns(data.data.headers);
-                this.showTranslationSection();
-            } else {
-                this.showMessage(data.message, 'error');
-            }
-        } catch (error) {
-            this.showMessage('文件处理失败: ' + error.message, 'error');
+        const response = await fetch('/api/upload', {
+            method: 'POST',
+            body: formData
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            this.currentFile = file;
+            this.displayFileInfo(data.data);
+            this.populateSourceColumns(data.data.headers);
+            this.showTranslationSection();
+        } else {
+            this.showMessage(data.message, 'error');
         }
     }
 
@@ -274,43 +262,30 @@ class CSVTranslator {
         formData.append('forceRetranslate', forceRetranslate);
         formData.append('sessionId', this.sessionId);
         
-        try {
-            // 设置较长的超时时间
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 300000); // 5分钟超时
-            
-            const response = await fetch('/api/translate', {
-                method: 'POST',
-                body: formData,
-                signal: controller.signal
-            });
-            
-            clearTimeout(timeoutId);
-            
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-            
-            const data = await response.json();
-            
-            if (data.success) {
-                this.updateProgress(100, '翻译完成!');
-                this.showResult(data.data);
-            } else {
-                this.showMessage(data.message, 'error');
-                this.addTranslationLog('系统', data.message, '系统', 'error', data.message);
-                this.updateProgress(100, '翻译失败');
-            }
-        } catch (error) {
-            let errorMessage = '';
-            if (error.name === 'AbortError') {
-                errorMessage = '翻译请求超时，请检查网络连接或减少翻译内容';
-            } else {
-                console.error('翻译请求失败:', error);
-                errorMessage = '翻译失败: ' + error.message;
-            }
-            this.showMessage(errorMessage, 'error');
-            this.addTranslationLog('系统', errorMessage, '系统', 'error', errorMessage);
+        // 设置较长的超时时间
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 300000); // 5分钟超时
+        
+        const response = await fetch('/api/translate', {
+            method: 'POST',
+            body: formData,
+            signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            this.updateProgress(100, '翻译完成!');
+            this.showResult(data.data);
+        } else {
+            this.showMessage(data.message, 'error');
+            this.addTranslationLog('系统', data.message, '系统', 'error', data.message);
             this.updateProgress(100, '翻译失败');
         }
     }
@@ -679,30 +654,25 @@ class CSVTranslator {
              return;
          }
          
-         try {
-             const response = await fetch(`/api/cache/stats/${this.sessionId}`, {
-                 method: 'GET',
-                 headers: {
-                     'Content-Type': 'application/json'
-                 }
-             });
-             
-             if (!response.ok) {
-                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+         const response = await fetch(`/api/cache/stats/${this.sessionId}`, {
+             method: 'GET',
+             headers: {
+                 'Content-Type': 'application/json'
              }
-             
-             const data = await response.json();
-             
-             if (data.success) {
-                 const stats = data.data;
-                 const message = `缓存统计:\n总请求: ${stats.totalRequests}\n缓存命中: ${stats.cacheHits}\n命中率: ${stats.hitRate}\n缓存大小: ${stats.cacheSize} 条记录`;
-                 alert(message);
-             } else {
-                 this.showMessage(data.message, 'error');
-             }
-         } catch (error) {
-             console.error('缓存统计请求失败:', error);
-             this.showMessage('获取缓存统计失败: ' + error.message, 'error');
+         });
+         
+         if (!response.ok) {
+             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+         }
+         
+         const data = await response.json();
+         
+         if (data.success) {
+             const stats = data.data;
+             const message = `缓存统计:\n总请求: ${stats.totalRequests}\n缓存命中: ${stats.cacheHits}\n命中率: ${stats.hitRate}\n缓存大小: ${stats.cacheSize} 条记录`;
+             alert(message);
+         } else {
+             this.showMessage(data.message, 'error');
          }
      }
      
@@ -717,28 +687,23 @@ class CSVTranslator {
              return;
          }
          
-         try {
-             const response = await fetch(`/api/cache/clear/${this.sessionId}`, {
-                 method: 'POST',
-                 headers: {
-                     'Content-Type': 'application/json'
-                 }
-             });
-             
-             if (!response.ok) {
-                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+         const response = await fetch(`/api/cache/clear/${this.sessionId}`, {
+             method: 'POST',
+             headers: {
+                 'Content-Type': 'application/json'
              }
-             
-             const data = await response.json();
-             
-             if (data.success) {
-                 this.showMessage('缓存已清理', 'success');
-             } else {
-                 this.showMessage(data.message, 'error');
-             }
-         } catch (error) {
-             console.error('清理缓存请求失败:', error);
-             this.showMessage('清理缓存失败: ' + error.message, 'error');
+         });
+         
+         if (!response.ok) {
+             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+         }
+         
+         const data = await response.json();
+         
+         if (data.success) {
+             this.showMessage('缓存已清理', 'success');
+         } else {
+             this.showMessage(data.message, 'error');
          }
      }
 

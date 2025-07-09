@@ -101,101 +101,92 @@ app.post('/api/config', (req, res) => {
 
 // 上传CSV文件
 app.post('/api/upload', upload.single('csvFile'), async (req, res) => {
-    try {
-        if (!req.file) {
-            return res.status(400).json({
-                success: false,
-                message: '请选择CSV文件'
-            });
-        }
-
-        const filePath = req.file.path;
-        const { headers, data } = await csvService.parseCSV(filePath);
-        
-        // 清理上传的临时文件
-        csvService.cleanupFile(filePath);
-        
-        res.json({
-            success: true,
-            message: '文件上传成功',
-            data: {
-                headers,
-                rowCount: data.length,
-                preview: data.slice(0, 5), // 返回前5行预览
-                fileName: req.file.originalname
-            }
-        });
-    } catch (error) {
-        console.error('文件上传错误:', error);
-        res.status(500).json({
+    if (!req.file) {
+        return res.status(400).json({
             success: false,
-            message: `文件处理失败: ${error.message}`
+            message: '请选择CSV文件'
         });
     }
+
+    const filePath = req.file.path;
+    const { headers, data } = await csvService.parseCSV(filePath);
+    
+    // 清理上传的临时文件
+    csvService.cleanupFile(filePath);
+    
+    res.json({
+        success: true,
+        message: '文件上传成功',
+        data: {
+            headers,
+            rowCount: data.length,
+            preview: data.slice(0, 5), // 返回前5行预览
+            fileName: req.file.originalname
+        }
+    });
 });
 
 // 翻译CSV文件
 app.post('/api/translate', upload.single('csvFile'), async (req, res) => {
-    try {
-        const {
-            sourceColumn,
-            targetLanguages,
-            forceRetranslate = false,
-            sessionId
-        } = req.body;
-        
-        if (!sessionId) {
-            return res.status(400).json({
-                success: false,
-                message: '缺少会话ID'
-            });
-        }
-        
-        const translationService = sessionTranslationServices.get(sessionId);
-        if (!translationService) {
-            return res.status(400).json({
-                success: false,
-                message: '请先配置百度翻译API'
-            });
-        }
+    const {
+        sourceColumn,
+        targetLanguages,
+        forceRetranslate = false,
+        sessionId
+    } = req.body;
+    
+    if (!sessionId) {
+        return res.status(400).json({
+            success: false,
+            message: '缺少会话ID'
+        });
+    }
+    
+    const translationService = sessionTranslationServices.get(sessionId);
+    if (!translationService) {
+        return res.status(400).json({
+            success: false,
+            message: '请先配置百度翻译API'
+        });
+    }
 
-        if (!req.file) {
-            return res.status(400).json({
-                success: false,
-                message: '请选择CSV文件'
-            });
-        }
+    if (!req.file) {
+        return res.status(400).json({
+            success: false,
+            message: '请选择CSV文件'
+        });
+    }
 
-        if (!sourceColumn) {
-            return res.status(400).json({
-                success: false,
-                message: '请指定源语言列'
-            });
-        }
+    if (!sourceColumn) {
+        return res.status(400).json({
+            success: false,
+            message: '请指定源语言列'
+        });
+    }
 
-        const targetLangs = JSON.parse(targetLanguages || '[]');
-        if (targetLangs.length === 0) {
-            return res.status(400).json({
-                success: false,
-                message: '请选择目标翻译语言'
-            });
-        }
+    const targetLangs = JSON.parse(targetLanguages || '[]');
+    if (targetLangs.length === 0) {
+        return res.status(400).json({
+            success: false,
+            message: '请选择目标翻译语言'
+        });
+    }
 
-        const filePath = req.file.path;
-        let { headers, data } = await csvService.parseCSV(filePath);
-        
-        // 添加缺失的语言列
-        const result = csvService.addMissingLanguageColumns(data, headers, targetLangs);
-        data = result.data;
-        headers = result.headers;
+    const filePath = req.file.path;
+    let { headers, data } = await csvService.parseCSV(filePath);
+    
+    // 添加缺失的语言列
+    const result = csvService.addMissingLanguageColumns(data, headers, targetLangs);
+    data = result.data;
+    headers = result.headers;
 
-        // 获取源文本
-        const sourceTexts = csvService.getSourceTexts(data, sourceColumn);
-        
-        // 翻译进度跟踪
-        let completedTranslations = 0;
-        const totalTranslations = targetLangs.length * sourceTexts.length;
-        const sessionSocket = sessionInfo.get(sessionId);
+    // 获取源文本
+    const sourceTexts = csvService.getSourceTexts(data, sourceColumn);
+    
+    // 翻译进度跟踪
+    let completedTranslations = 0;
+    const totalTranslations = targetLangs.length * sourceTexts.length;
+    const sessionSocket = sessionInfo.get(sessionId);
         
         // 为每种目标语言进行翻译
         for (const targetLang of targetLangs) {
@@ -218,56 +209,33 @@ app.post('/api/translate', upload.single('csvFile'), async (req, res) => {
              });
 
              if (textsToTranslate.length > 0) {
-                 try {
-                     // 使用直接翻译，每翻译一个文本立即反馈
-                     const sessionSocket = sessionInfo.get(sessionId);
-                     
-                     const translations = await translationService.translateDirect(
-                         textsToTranslate,
-                         'auto',
-                         targetLang,
-                         (feedback) => {
-                             try {
-                                 // 实时反馈回调函数
-                                 const dataIndex = indices[feedback.index];
-                                 data[dataIndex][targetLang] = feedback.translatedText;
-                                 completedTranslations++;
-                                 
-                                 // 立即发送翻译日志到客户端
-                                 if (sessionSocket) {
-                                     sessionSocket.emit('translationLog', {
-                                         originalText: feedback.originalText,
-                                         translatedText: feedback.translatedText,
-                                         targetLanguage: targetLang,
-                                         status: feedback.error ? 'error' : 'success',
-                                         progress: Math.round((completedTranslations / totalTranslations) * 100),
-                                         sessionId: sessionId,
-                                         error: feedback.error
-                                     });
-                                 }
-                             } catch (callbackError) {
-                                 console.error('回调处理错误:', callbackError.message);
-                                 // 即使回调出错，也要确保进度继续
-                                 completedTranslations++;
-                             }
+                 // 使用直接翻译，每翻译一个文本立即反馈
+                 const sessionSocket = sessionInfo.get(sessionId);
+                 
+                 const translations = await translationService.translateDirect(
+                     textsToTranslate,
+                     'auto',
+                     targetLang,
+                     (feedback) => {
+                         // 实时反馈回调函数
+                         const dataIndex = indices[feedback.index];
+                         data[dataIndex][targetLang] = feedback.translatedText;
+                         completedTranslations++;
+                         
+                         // 立即发送翻译日志到客户端
+                         if (sessionSocket) {
+                             sessionSocket.emit('translationLog', {
+                                 originalText: feedback.originalText,
+                                 translatedText: feedback.translatedText,
+                                 targetLanguage: targetLang,
+                                 status: feedback.error ? 'error' : 'success',
+                                 progress: Math.round((completedTranslations / totalTranslations) * 100),
+                                 sessionId: sessionId,
+                                 error: feedback.error
+                             });
                          }
-                     );
-                 } catch (translationError) {
-                     console.error(`翻译语言${targetLang}时出错:`, translationError.message);
-                     // 即使某个语言翻译失败，也要继续处理其他语言
-                     const sessionSocket = sessionInfo.get(sessionId);
-                     if (sessionSocket) {
-                         sessionSocket.emit('translationLog', {
-                             originalText: '批量翻译',
-                             translatedText: `语言${targetLang}翻译失败`,
-                             targetLanguage: targetLang,
-                             status: 'error',
-                             progress: Math.round((completedTranslations / totalTranslations) * 100),
-                             sessionId: sessionId,
-                             error: translationError.message
-                         });
                      }
-                 }
+                 );
              }
              
              console.log(`${targetLang} 翻译完成`);
@@ -277,23 +245,8 @@ app.post('/api/translate', upload.single('csvFile'), async (req, res) => {
         const outputFileName = `translated_${Date.now()}.csv`;
         let outputPath;
         
-        try {
-            outputPath = await csvService.generateCSV(data, headers, outputFileName);
-            console.log(`CSV文件生成成功: ${outputFileName}`);
-        } catch (csvError) {
-            console.error('CSV文件生成失败:', csvError.message);
-            // 即使CSV生成失败，也要清理临时文件并返回错误信息
-            csvService.cleanupFile(filePath);
-            return res.status(500).json({
-                success: false,
-                message: `CSV文件生成失败: ${csvError.message}`,
-                data: {
-                    translatedRows: data.length,
-                    translatedLanguages: targetLangs.length,
-                    totalTranslations: completedTranslations
-                }
-            });
-        }
+        outputPath = await csvService.generateCSV(data, headers, outputFileName);
+        console.log(`CSV文件生成成功: ${outputFileName}`);
         
         // 清理上传的临时文件
         csvService.cleanupFile(filePath);
@@ -324,53 +277,6 @@ app.post('/api/translate', upload.single('csvFile'), async (req, res) => {
             }
         });
         
-    } catch (error) {
-        console.error('翻译过程中发生严重错误:', error);
-        
-        // 即使发生严重错误，也尝试生成已翻译的内容
-        try {
-            const outputFileName = `translated_partial_${Date.now()}.csv`;
-            const outputPath = await csvService.generateCSV(data, headers, outputFileName);
-            
-            // 清理上传的临时文件
-            csvService.cleanupFile(filePath);
-            
-            // 发送部分完成状态到客户端
-            const sessionSocket = sessionInfo.get(sessionId);
-            if (sessionSocket) {
-                sessionSocket.emit('translationComplete', {
-                    sessionId: sessionId,
-                    fileName: outputFileName,
-                    totalTranslations: completedTranslations,
-                    message: '翻译过程中遇到错误，但已生成部分翻译结果',
-                    hasErrors: true
-                });
-            }
-            
-            res.json({
-                success: true,
-                message: `翻译过程中遇到错误，但已生成部分翻译结果: ${error.message}`,
-                data: {
-                    fileName: outputFileName,
-                    downloadUrl: `/api/download/${outputFileName}`,
-                    translatedRows: data.length,
-                    translatedLanguages: targetLangs.length,
-                    totalTranslations: completedTranslations,
-                    hasErrors: true,
-                    errorMessage: error.message
-                }
-            });
-        } catch (csvError) {
-            // 如果连CSV生成都失败了，返回错误信息
-            console.error('无法生成部分翻译结果:', csvError);
-            res.status(500).json({
-                success: false,
-                message: `翻译失败且无法生成结果文件: ${error.message}`,
-                originalError: error.message,
-                csvError: csvError.message
-            });
-        }
-    }
 });
 
 // 下载翻译后的文件

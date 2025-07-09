@@ -52,12 +52,8 @@ class CSVService {
             header: headers.map(header => ({ id: header, title: header }))
         });
 
-        try {
-            await csvWriter.writeRecords(data);
-            return outputPath;
-        } catch (error) {
-            throw new Error(`生成CSV文件失败: ${error.message}`);
-        }
+        await csvWriter.writeRecords(data);
+        return outputPath;
     }
 
     // 添加缺失的语言列
@@ -108,27 +104,19 @@ class CSVService {
 
     // 清理临时文件
     cleanupFile(filePath) {
-        try {
-            if (fs.existsSync(filePath)) {
-                fs.unlinkSync(filePath);
-            }
-        } catch (error) {
-            console.error('清理文件失败:', error.message);
+        if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
         }
     }
 
     // 获取文件统计信息
     getFileStats(filePath) {
-        try {
-            const stats = fs.statSync(filePath);
-            return {
-                size: stats.size,
-                created: stats.birthtime,
-                modified: stats.mtime
-            };
-        } catch (error) {
-            return null;
-        }
+        const stats = fs.statSync(filePath);
+        return {
+            size: stats.size,
+            created: stats.birthtime,
+            modified: stats.mtime
+        };
     }
 }
 

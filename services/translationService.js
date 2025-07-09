@@ -84,23 +84,18 @@ class BaiduTranslationService {
             sign: sign
         };
 
-        try {
-            const response = await axios.get(this.apiUrl, { params });
-            
-            if (response.data.error_code) {
-                throw new Error(`翻译错误: ${response.data.error_msg}`);
-            }
-
-            const result = response.data.trans_result[0].dst;
-            
-            // 存储到缓存
-            this.translationCache.set(cacheKey, result);
-            
-            return result;
-        } catch (error) {
-            console.error('翻译失败:', error.message);
-            throw error;
+        const response = await axios.get(this.apiUrl, { params });
+        
+        if (response.data.error_code) {
+            throw new Error(`翻译错误: ${response.data.error_msg}`);
         }
+
+        const result = response.data.trans_result[0].dst;
+        
+        // 存储到缓存
+        this.translationCache.set(cacheKey, result);
+        
+        return result;
     }
 
     // 直接翻译（逐个翻译，实时反馈）
@@ -117,57 +112,26 @@ class BaiduTranslationService {
             let hasError = false;
             let errorMessage = null;
             
-            try {
-                // 如果文本为空或只有空白字符，直接跳过翻译
-                if (!texts[i] || texts[i].trim() === '') {
-                    translatedText = texts[i];
-                } else {
-                    translatedText = await this.translateText(texts[i], from, to);
-                    successCount++;
-                }
-                
-                results.push(translatedText);
-                
-                // 成功时反馈进度
-                if (progressCallback) {
-                    try {
-                        progressCallback({
-                            index: i,
-                            total: texts.length,
-                            originalText: texts[i],
-                            translatedText: translatedText,
-                            progress: ((i + 1) / texts.length * 100).toFixed(1),
-                            status: 'success'
-                        });
-                    } catch (callbackError) {
-                        console.error('进度回调失败:', callbackError.message);
-                    }
-                }
-                
-            } catch (error) {
-                console.error(`翻译第${i+1}项失败:`, error.message);
-                errorCount++;
-                hasError = true;
-                errorMessage = error.message;
-                
-                results.push(texts[i]); // 失败时保持原文
-                
-                // 即使失败也要反馈进度，确保UI不会卡住
-                if (progressCallback) {
-                    try {
-                        progressCallback({
-                            index: i,
-                            total: texts.length,
-                            originalText: texts[i],
-                            translatedText: texts[i],
-                            progress: ((i + 1) / texts.length * 100).toFixed(1),
-                            error: error.message || '翻译失败',
-                            status: 'error'
-                        });
-                    } catch (callbackError) {
-                        console.error('进度回调失败:', callbackError.message);
-                    }
-                }
+            // 如果文本为空或只有空白字符，直接跳过翻译
+            if (!texts[i] || texts[i].trim() === '') {
+                translatedText = texts[i];
+            } else {
+                translatedText = await this.translateText(texts[i], from, to);
+                successCount++;
+            }
+            
+            results.push(translatedText);
+            
+            // 成功时反馈进度
+            if (progressCallback) {
+                progressCallback({
+                    index: i,
+                    total: texts.length,
+                    originalText: texts[i],
+                    translatedText: translatedText,
+                    progress: ((i + 1) / texts.length * 100).toFixed(1),
+                    status: 'success'
+                });
             }
             
             // 添加延迟避免API频率限制
