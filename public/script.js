@@ -262,7 +262,6 @@ class CSVTranslator {
         
         const forceRetranslate = document.getElementById('forceRetranslate').checked;
         
-        this.showProgressSection();
         this.updateProgress(0, '准备开始翻译...');
         
         // 清空之前的日志
@@ -299,7 +298,7 @@ class CSVTranslator {
                 this.showResult(data.data);
             } else {
                 this.showMessage(data.message, 'error');
-                this.hideProgressSection();
+                this.updateProgress(0, '翻译失败，等待重新开始...');
             }
         } catch (error) {
             if (error.name === 'AbortError') {
@@ -308,7 +307,7 @@ class CSVTranslator {
                 console.error('翻译请求失败:', error);
                 this.showMessage('翻译失败: ' + error.message, 'error');
             }
-            this.hideProgressSection();
+            this.updateProgress(0, '翻译失败，等待重新开始...');
         }
     }
 
@@ -317,14 +316,7 @@ class CSVTranslator {
         return Array.from(checkboxes).map(cb => cb.value);
     }
 
-    showProgressSection() {
-        document.getElementById('progressSection').style.display = 'block';
-        document.getElementById('progressSection').classList.add('fade-in');
-    }
-
-    hideProgressSection() {
-        document.getElementById('progressSection').style.display = 'none';
-    }
+    // 进度区域现在始终显示，不需要显示/隐藏方法
 
     updateProgress(percentage, text) {
         document.getElementById('progressFill').style.width = percentage + '%';
@@ -495,6 +487,12 @@ class CSVTranslator {
             error
         };
         
+        // 如果这是第一条真实的翻译日志，清除初始提示
+        if (this.translationLog.length === 0) {
+            const logContainer = document.getElementById('translationLog');
+            logContainer.innerHTML = '';
+        }
+        
         this.translationLog.push(logEntry);
         this.renderLogEntry(logEntry);
         this.scrollLogToBottom();
@@ -529,7 +527,14 @@ class CSVTranslator {
     clearTranslationLog() {
         this.translationLog = [];
         const logContainer = document.getElementById('translationLog');
-        logContainer.innerHTML = '';
+        logContainer.innerHTML = `
+            <div class="log-entry" style="border-left-color: #6c757d; background: #f8f9fa;">
+                <div class="log-timestamp">系统</div>
+                <div class="log-content">
+                    <div style="color: #6c757d; font-style: italic;">翻译日志将在此处显示...</div>
+                </div>
+            </div>
+        `;
     }
 
     scrollLogToBottom() {
