@@ -336,11 +336,51 @@ app.post('/api/translate', upload.single('csvFile'), async (req, res) => {
         });
         
     } catch (error) {
-        console.error('翻译错误:', error);
-        res.status(500).json({
-            success: false,
-            message: `翻译失败: ${error.message}`
-        });
+        console.error('翻译过程中发生严重错误:', error);
+        
+        // 即使发生严重错误，也尝试生成已翻译的内容
+        try {
+            const outputFileName = `translated_partial_${Date.now()}.csv`;
+            const outputPath = await csvService.generateCSV(data, headers, outputFileName);
+            
+            // 清理上传的临时文件
+            csvService.cleanupFile(filePath);
+            
+            // 发送部分完成状态到客户端
+            const sessionSocket = sessionInfo.get(sessionId);
+            if (sessionSocket) {
+                sessionSocket.emit('translationComplete', {
+                    sessionId: sessionId,
+                    fileName: outputFileName,
+                    totalTranslations: completedTranslations,
+                    message: '翻译过程中遇到错误，但已生成部分翻译结果',
+                    hasErrors: true
+                });
+            }
+            
+            res.json({
+                success: true,
+                message: `翻译过程中遇到错误，但已生成部分翻译结果: ${error.message}`,
+                data: {
+                    fileName: outputFileName,
+                    downloadUrl: `/api/download/${outputFileName}`,
+                    translatedRows: data.length,
+                    translatedLanguages: targetLangs.length,
+                    totalTranslations: completedTranslations,
+                    hasErrors: true,
+                    errorMessage: error.message
+                }
+            });
+        } catch (csvError) {
+            // 如果连CSV生成都失败了，返回错误信息
+            console.error('无法生成部分翻译结果:', csvError);
+            res.status(500).json({
+                success: false,
+                message: `翻译失败且无法生成结果文件: ${error.message}`,
+                originalError: error.message,
+                csvError: csvError.message
+            });
+        }
     }
 });
 

@@ -357,6 +357,21 @@ class CSVTranslator {
         const notification = document.createElement('div');
         notification.className = `notification ${type}`;
         notification.textContent = message;
+        
+        let backgroundColor;
+        switch(type) {
+            case 'success':
+                backgroundColor = '#28a745;';
+                break;
+            case 'warning':
+                backgroundColor = '#ffc107; color: #212529;';
+                break;
+            case 'error':
+            default:
+                backgroundColor = '#dc3545;';
+                break;
+        }
+        
         notification.style.cssText = `
             position: fixed;
             top: 20px;
@@ -367,14 +382,65 @@ class CSVTranslator {
             font-weight: bold;
             z-index: 1000;
             animation: slideIn 0.3s ease-out;
-            ${type === 'success' ? 'background-color: #28a745;' : 'background-color: #dc3545;'}
+            ${backgroundColor}
         `;
         
         document.body.appendChild(notification);
         
         setTimeout(() => {
             notification.remove();
-        }, 3000);
+        }, 5000); // 增加显示时间到5秒，特别是对于warning消息
+    }
+    
+    showDownloadLink(fileName) {
+        // 在结果区域显示下载链接
+        const resultSection = document.getElementById('resultSection');
+        if (!resultSection) {
+            // 如果结果区域不存在，创建一个临时的下载区域
+            const downloadSection = document.createElement('div');
+            downloadSection.id = 'downloadSection';
+            downloadSection.style.cssText = `
+                margin: 20px 0;
+                padding: 20px;
+                background: #f8f9fa;
+                border-radius: 8px;
+                border: 1px solid #dee2e6;
+            `;
+            downloadSection.innerHTML = `
+                <h3>📥 下载翻译结果</h3>
+                <p>翻译已完成，点击下面的链接下载结果文件：</p>
+                <a href="/api/download/${fileName}" class="btn btn-primary" download>
+                    📄 下载 ${fileName}
+                </a>
+            `;
+            
+            // 插入到进度区域后面
+            const progressSection = document.getElementById('progressSection');
+            if (progressSection && progressSection.parentNode) {
+                progressSection.parentNode.insertBefore(downloadSection, progressSection.nextSibling);
+            } else {
+                document.querySelector('.container').appendChild(downloadSection);
+            }
+        } else {
+            // 如果结果区域存在，更新下载链接
+            this.downloadUrl = `/api/download/${fileName}`;
+            resultSection.style.display = 'block';
+            resultSection.classList.add('fade-in');
+            
+            // 更新结果信息，添加下载链接
+            const resultInfo = document.getElementById('resultInfo');
+            if (resultInfo) {
+                const downloadLinkHtml = `
+                    <div class="download-section" style="margin-top: 20px; padding: 15px; background: #e8f5e8; border-radius: 5px;">
+                        <h4>📥 下载翻译结果</h4>
+                        <a href="/api/download/${fileName}" class="btn btn-primary" download>
+                            📄 下载 ${fileName}
+                        </a>
+                    </div>
+                `;
+                resultInfo.innerHTML += downloadLinkHtml;
+            }
+        }
     }
 
     showConfigMessage(message, type) {
@@ -505,7 +571,20 @@ class CSVTranslator {
              this.socket.on('translationComplete', (data) => {
                  if (data.sessionId === this.sessionId) {
                      console.log('翻译任务完成:', data.message);
-                     this.updateProgress(100, '翻译任务完成!');
+                     
+                     // 根据是否有错误显示不同的消息
+                     if (data.hasErrors) {
+                         this.updateProgress(100, '翻译完成(有错误) - 已生成部分结果');
+                         this.showMessage(`翻译过程中遇到错误，但已生成部分翻译结果。文件: ${data.fileName}`, 'warning');
+                     } else {
+                         this.updateProgress(100, '翻译任务完成!');
+                         this.showMessage(`翻译任务完成！文件: ${data.fileName}`, 'success');
+                     }
+                     
+                     // 显示下载链接
+                     if (data.fileName) {
+                         this.showDownloadLink(data.fileName);
+                     }
                  }
              });
              
