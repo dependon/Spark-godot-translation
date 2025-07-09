@@ -206,6 +206,8 @@ class BaiduTranslationService {
     async translateWithRealTimeFeedback(texts, from = 'auto', to = 'zh', progressCallback = null) {
         const results = [];
         const delay = 1; // 1ms延迟，避免API频率限制
+        let successCount = 0; // 初始化成功计数
+        let errorCount = 0;   // 初始化错误计数
         
         console.log(`开始实时翻译${texts.length}个文本，延迟${delay}ms避免API限制`);
         
@@ -222,8 +224,31 @@ class BaiduTranslationService {
                     translatedText = await this.translateText(texts[i], from, to);
                     successCount++;
                 }
+                
+                results.push(translatedText);
+                
+                // 成功时反馈进度
+                if (progressCallback) {
+                    try {
+                        progressCallback({
+                            index: i,
+                            total: texts.length,
+                            originalText: texts[i],
+                            translatedText: translatedText,
+                            progress: ((i + 1) / texts.length * 100).toFixed(1),
+                            status: 'success'
+                        });
+                    } catch (callbackError) {
+                        console.error('进度回调失败:', callbackError.message);
+                    }
+                }
+                
             } catch (error) {
                 console.error(`翻译第${i+1}项失败:`, error.message);
+                errorCount++;
+                hasError = true;
+                errorMessage = error.message;
+                
                 results.push(texts[i]); // 失败时保持原文
                 
                 // 即使失败也要反馈进度，确保UI不会卡住
@@ -242,11 +267,11 @@ class BaiduTranslationService {
                         console.error('进度回调失败:', callbackError.message);
                     }
                 }
-                
-                // 失败时也要延迟，避免连续错误
-                if (i < texts.length - 1) {
-                    await new Promise(resolve => setTimeout(resolve, delay));
-                }
+            }
+            
+            // 添加延迟避免API频率限制
+            if (i < texts.length - 1) {
+                await new Promise(resolve => setTimeout(resolve, delay));
             }
         }
         
