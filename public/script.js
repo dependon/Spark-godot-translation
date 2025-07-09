@@ -6,6 +6,9 @@ class CSVTranslator {
         this.translationLog = [];
         this.sessionId = null;
         this.socket = null;
+        this.heartbeatInterval = null;
+        this.lastHeartbeat = Date.now();
+        this.connectionStable = true;
         this.init();
     }
 
@@ -350,44 +353,88 @@ class CSVTranslator {
         }
     }
 
-    showMessage(message, type) {
-        // 可以在页面顶部显示通知消息
-        const notification = document.createElement('div');
-        notification.className = `notification ${type}`;
-        notification.textContent = message;
-        
-        let backgroundColor;
-        switch(type) {
-            case 'success':
-                backgroundColor = '#28a745;';
-                break;
-            case 'warning':
-                backgroundColor = '#ffc107; color: #212529;';
-                break;
-            case 'error':
-            default:
-                backgroundColor = '#dc3545;';
-                break;
-        }
-        
-        notification.style.cssText = `
+    showMessage(message, type = 'info') {
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `message ${type}`;
+        messageDiv.textContent = message;
+        messageDiv.style.cssText = `
             position: fixed;
             top: 20px;
             right: 20px;
-            padding: 15px 20px;
-            border-radius: 5px;
+            padding: 10px 15px;
+            border-radius: 4px;
             color: white;
             font-weight: bold;
-            z-index: 1000;
-            animation: slideIn 0.3s ease-out;
-            ${backgroundColor}
+            z-index: 10000;
+            max-width: 300px;
+            word-wrap: break-word;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
         `;
         
-        document.body.appendChild(notification);
+        // 根据类型设置背景色
+        switch(type) {
+            case 'success':
+                messageDiv.style.backgroundColor = '#4CAF50';
+                break;
+            case 'error':
+                messageDiv.style.backgroundColor = '#f44336';
+                break;
+            case 'warning':
+                messageDiv.style.backgroundColor = '#ff9800';
+                break;
+            default:
+                messageDiv.style.backgroundColor = '#2196F3';
+        }
         
+        // 添加到页面
+        document.body.appendChild(messageDiv);
+        
+        // 3秒后自动移除
         setTimeout(() => {
-            notification.remove();
-        }, 5000); // 增加显示时间到5秒，特别是对于warning消息
+            if (messageDiv.parentNode) {
+                messageDiv.parentNode.removeChild(messageDiv);
+            }
+        }, 3000);
+    }
+    
+    // 开始心跳检测
+    startHeartbeat() {
+        this.stopHeartbeat(); // 先停止之前的心跳
+        this.lastHeartbeat = Date.now();
+        
+        this.heartbeatInterval = setInterval(() => {
+            if (this.socket && this.socket.connected) {
+                // 发送心跳
+                this.socket.emit('heartbeat', { timestamp: Date.now() });
+                
+                // 检查是否超时
+                const now = Date.now();
+                if (now - this.lastHeartbeat > 30000) { // 30秒超时
+                    console.warn('心跳超时，连接可能不稳定');
+                    if (this.connectionStable) {
+                        this.connectionStable = false;
+                        this.showMessage('连接不稳定，正在尝试重连...', 'warning');
+                    }
+                }
+            }
+        }, 10000); // 每10秒发送一次心跳
+    }
+    
+    // 停止心跳检测
+    stopHeartbeat() {
+        if (this.heartbeatInterval) {
+            clearInterval(this.heartbeatInterval);
+            this.heartbeatInterval = null;
+        }
+    }
+    
+    // 处理心跳响应
+    handleHeartbeatResponse() {
+        this.lastHeartbeat = Date.now();
+        if (!this.connectionStable) {
+            this.connectionStable = true;
+            this.showMessage('连接已恢复稳定', 'success');
+        }
     }
     
     showDownloadLink(fileName) {
@@ -576,42 +623,88 @@ class CSVTranslator {
     // Socket.IO初始化
      initSocket() {
          if (typeof io !== 'undefined') {
-             this.socket = io();
+             // 配置Socket.IO选项，包括重连机制
+             this.socket = io({
+                 reconnection: true,
+                 reconnectionDelay: 1000,
+                 reconnectionAttempts: 5,
+                 timeout: 20000
+             });
              
              this.socket.on('connect', () => {
                  console.log('已连接到服务器');
+                 this.showMessage('已连接到服务器', 'success');
+                 this.connectionStable = true;
+                 this.startHeartbeat();
+             });
+             
+             this.socket.on('reconnect', (attemptNumber) => {
+                 console.log('重新连接成功，尝试次数:', attemptNumber);
+                 this.showMessage('重新连接成功', 'success');
+             });
+             
+             this.socket.on('reconnect_attempt', (attemptNumber) => {
+                 console.log('尝试重新连接...', attemptNumber);
+                 this.showMessage(`尝试重新连接... (${attemptNumber}/5)`, 'warning');
+             });
+             
+             this.socket.on('reconnect_failed', () => {
+                 console.log('重新连接失败');
+                 this.showMessage('连接失败，请刷新页面重试', 'error');
+             });
+             
+             this.socket.on('connect_error', (error) => {
+                 console.error('连接错误:', error);
+                 this.showMessage('连接服务器时出错', 'error');
              });
              
              // 接收服务器分配的会话ID
              this.socket.on('sessionAssigned', (data) => {
-                 this.sessionId = data.sessionId;
-                 console.log('会话ID已分配:', this.sessionId);
-                 this.updateSessionDisplay();
-                 // 向服务器注册会话ID
-                 this.socket.emit('registerSession', { sessionId: this.sessionId });
-                 
-                 // 会话建立后，启用相关按钮
-                 this.enableSessionDependentButtons();
+                 try {
+                     this.sessionId = data.sessionId;
+                     console.log('会话ID已分配:', this.sessionId);
+                     this.updateSessionDisplay();
+                     // 向服务器注册会话ID
+                     this.socket.emit('registerSession', { sessionId: this.sessionId });
+                     
+                     // 会话建立后，启用相关按钮
+                     this.enableSessionDependentButtons();
+                 } catch (error) {
+                     console.error('处理会话分配时出错:', error);
+                     this.showMessage('会话初始化失败', 'error');
+                 }
              });
              
              this.socket.on('translationLog', (logData) => {
-                 // 只处理属于当前会话的翻译日志
-                 if (logData.sessionId === this.sessionId) {
-                     this.addTranslationLog(
-                         logData.originalText,
-                         logData.translatedText,
-                         logData.targetLanguage,
-                         logData.status,
-                         logData.error
-                     );
-                     
-                     // 更新进度（无论成功还是失败都要更新）
-                     if (logData.progress !== undefined) {
-                         const progressText = logData.status === 'error' ? 
-                             `翻译进度: ${logData.progress}% (有错误)` : 
-                             `翻译进度: ${logData.progress}%`;
-                         this.updateProgress(logData.progress, progressText);
+                 try {
+                     // 数据验证
+                     if (!logData || typeof logData !== 'object') {
+                         console.warn('收到无效的翻译日志数据:', logData);
+                         return;
                      }
+                     
+                     // 只处理属于当前会话的翻译日志
+                     if (logData.sessionId === this.sessionId) {
+                         this.addTranslationLog(
+                             logData.originalText || '数据错误',
+                             logData.translatedText || '翻译错误',
+                             logData.targetLanguage || 'unknown',
+                             logData.status || 'error',
+                             logData.error
+                         );
+                         
+                         // 更新进度（无论成功还是失败都要更新）
+                         if (logData.progress !== undefined && !isNaN(logData.progress)) {
+                             const progressText = logData.status === 'error' ? 
+                                 `翻译进度: ${logData.progress}% (有错误)` : 
+                                 `翻译进度: ${logData.progress}%`;
+                             this.updateProgress(logData.progress, progressText);
+                         }
+                     }
+                 } catch (error) {
+                     console.error('处理翻译日志时出错:', error);
+                     // 显示错误但不中断翻译进程
+                     this.showMessage('接收翻译日志时出现错误，但翻译继续进行', 'warning');
                  }
              });
              
@@ -650,12 +743,20 @@ class CSVTranslator {
                  }
              });
              
-             this.socket.on('disconnect', () => {
-                 console.log('与服务器断开连接');
-                 this.sessionId = null;
-                 this.updateSessionDisplay();
-                 this.disableSessionDependentButtons();
+             // 心跳响应
+             this.socket.on('heartbeat_response', () => {
+                 this.handleHeartbeatResponse();
              });
+             
+             this.socket.on('disconnect', () => {
+                   console.log('与服务器断开连接');
+                   this.showMessage('与服务器断开连接', 'warning');
+                   this.connectionStable = false;
+                   this.stopHeartbeat();
+                   this.sessionId = null;
+                   this.updateSessionDisplay();
+                   this.disableSessionDependentButtons();
+               });
          }
      }
 

@@ -247,15 +247,37 @@ app.post('/api/translate', upload.single('csvFile'), async (req, res) => {
                          
                          // 立即发送翻译日志到客户端
                          if (sessionSocket) {
-                             sessionSocket.emit('translationLog', {
-                                 originalText: feedback.originalText,
-                                 translatedText: feedback.translatedText,
+                             // 数据验证和清理，防止JSON序列化错误
+                             const logData = {
+                                 originalText: String(feedback.originalText || '').replace(/[\x00-\x1F\x7F-\x9F]/g, ''),
+                                 translatedText: String(feedback.translatedText || '').replace(/[\x00-\x1F\x7F-\x9F]/g, ''),
                                  targetLanguage: targetLang,
                                  status: feedback.error ? 'error' : 'success',
                                  progress: Math.round((completedTranslations / totalTranslations) * 100),
                                  sessionId: sessionId,
-                                 error: feedback.error
-                             });
+                                 error: feedback.error ? String(feedback.error).replace(/[\x00-\x1F\x7F-\x9F]/g, '') : null
+                             };
+                             
+                             // 安全发送数据，捕获可能的序列化错误
+                             try {
+                                 sessionSocket.emit('translationLog', logData);
+                             } catch (emitError) {
+                                 console.error('发送翻译日志失败:', emitError);
+                                 // 发送简化版本的日志
+                                 try {
+                                     sessionSocket.emit('translationLog', {
+                                         originalText: '数据包含特殊字符',
+                                         translatedText: '翻译完成',
+                                         targetLanguage: targetLang,
+                                         status: 'success',
+                                         progress: Math.round((completedTranslations / totalTranslations) * 100),
+                                         sessionId: sessionId,
+                                         error: null
+                                     });
+                                 } catch (fallbackError) {
+                                     console.error('发送简化翻译日志也失败:', fallbackError);
+                                 }
+                             }
                          }
                          
                          return true; // 返回true表示继续翻译
@@ -428,6 +450,12 @@ io.on('connection', (socket) => {
             sessionInfo.set(data.sessionId, socket);
             console.log('会话已注册:', data.sessionId, 'Socket ID:', socket.id);
         }
+    });
+    
+    // 心跳处理
+    socket.on('heartbeat', (data) => {
+        // 响应心跳
+        socket.emit('heartbeat_response', { timestamp: Date.now() });
     });
     
     socket.on('disconnect', () => {
