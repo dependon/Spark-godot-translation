@@ -139,6 +139,41 @@ select:focus {
     opacity: 0.6;
     cursor: not-allowed;
     transform: none;
+    background: #6c757d !important;
+    color: #fff !important;
+}
+
+.btn:disabled:hover {
+    transform: none;
+    box-shadow: none;
+}
+
+/* 会话状态指示器 */
+.session-info {
+    font-size: 0.9rem;
+    padding: 5px 10px;
+    border-radius: 4px;
+    background: #e9ecef;
+    color: #495057;
+}
+
+/* 错误提示样式 */
+.error-info {
+    background: #f8d7da;
+    border: 1px solid #f5c6cb;
+    color: #721c24;
+    padding: 15px;
+    border-radius: 8px;
+    margin: 10px 0;
+}
+
+.warning-info {
+    background: #fff3cd;
+    border: 1px solid #ffeaa7;
+    color: #856404;
+    padding: 15px;
+    border-radius: 8px;
+    margin: 10px 0;
 }
 
 .upload-area {

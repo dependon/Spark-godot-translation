@@ -13,6 +13,7 @@ class CSVTranslator {
         this.bindEvents();
         await this.loadSupportedLanguages();
         this.setupDragAndDrop();
+        this.disableSessionDependentButtons(); // 初始时禁用会话相关按钮
         this.initSocket();
     }
 
@@ -32,11 +33,23 @@ class CSVTranslator {
         // 清空日志按钮
         document.getElementById('clearLogBtn').addEventListener('click', () => this.clearTranslationLog());
         
-        // 缓存统计按钮
-        document.getElementById('cacheStatsBtn')?.addEventListener('click', () => this.showCacheStats());
+        // 缓存统计按钮 - 添加会话检查
+        document.getElementById('cacheStatsBtn')?.addEventListener('click', () => {
+            if (!this.sessionId) {
+                this.showMessage('请等待与服务器连接建立', 'warning');
+                return;
+            }
+            this.showCacheStats();
+        });
         
-        // 清理缓存按钮
-        document.getElementById('clearCacheBtn')?.addEventListener('click', () => this.clearCache());
+        // 清理缓存按钮 - 添加会话检查
+        document.getElementById('clearCacheBtn')?.addEventListener('click', () => {
+            if (!this.sessionId) {
+                this.showMessage('请等待与服务器连接建立', 'warning');
+                return;
+            }
+            this.clearCache();
+        });
     }
 
     setupDragAndDrop() {
@@ -263,10 +276,21 @@ class CSVTranslator {
         formData.append('sessionId', this.sessionId);
         
         try {
+            // 设置较长的超时时间
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 300000); // 5分钟超时
+            
             const response = await fetch('/api/translate', {
                 method: 'POST',
-                body: formData
+                body: formData,
+                signal: controller.signal
             });
+            
+            clearTimeout(timeoutId);
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
             
             const data = await response.json();
             
@@ -278,7 +302,12 @@ class CSVTranslator {
                 this.hideProgressSection();
             }
         } catch (error) {
-            this.showMessage('翻译失败: ' + error.message, 'error');
+            if (error.name === 'AbortError') {
+                this.showMessage('翻译请求超时，请检查网络连接或减少翻译内容', 'error');
+            } else {
+                console.error('翻译请求失败:', error);
+                this.showMessage('翻译失败: ' + error.message, 'error');
+            }
             this.hideProgressSection();
         }
     }
@@ -527,6 +556,40 @@ class CSVTranslator {
             }
         }
     }
+    
+    // 启用依赖会话的按钮
+    enableSessionDependentButtons() {
+        const cacheStatsBtn = document.getElementById('cacheStatsBtn');
+        const clearCacheBtn = document.getElementById('clearCacheBtn');
+        
+        if (cacheStatsBtn) {
+            cacheStatsBtn.disabled = false;
+            cacheStatsBtn.title = '查看翻译缓存统计信息';
+        }
+        
+        if (clearCacheBtn) {
+            clearCacheBtn.disabled = false;
+            clearCacheBtn.title = '清理翻译缓存';
+        }
+        
+        console.log('会话相关功能已启用');
+    }
+    
+    // 禁用依赖会话的按钮
+    disableSessionDependentButtons() {
+        const cacheStatsBtn = document.getElementById('cacheStatsBtn');
+        const clearCacheBtn = document.getElementById('clearCacheBtn');
+        
+        if (cacheStatsBtn) {
+            cacheStatsBtn.disabled = true;
+            cacheStatsBtn.title = '请等待与服务器连接建立';
+        }
+        
+        if (clearCacheBtn) {
+            clearCacheBtn.disabled = true;
+            clearCacheBtn.title = '请等待与服务器连接建立';
+        }
+    }
 
     // Socket.IO初始化
      initSocket() {
@@ -544,6 +607,9 @@ class CSVTranslator {
                  this.updateSessionDisplay();
                  // 向服务器注册会话ID
                  this.socket.emit('registerSession', { sessionId: this.sessionId });
+                 
+                 // 会话建立后，启用相关按钮
+                 this.enableSessionDependentButtons();
              });
              
              this.socket.on('translationLog', (logData) => {
@@ -592,6 +658,7 @@ class CSVTranslator {
                  console.log('与服务器断开连接');
                  this.sessionId = null;
                  this.updateSessionDisplay();
+                 this.disableSessionDependentButtons();
              });
          }
      }
@@ -599,12 +666,22 @@ class CSVTranslator {
      // 显示缓存统计信息
      async showCacheStats() {
          if (!this.sessionId) {
-             this.showMessage('会话未初始化', 'error');
+             this.showMessage('会话未初始化，请等待连接建立', 'warning');
              return;
          }
          
          try {
-             const response = await fetch(`/api/cache/stats/${this.sessionId}`);
+             const response = await fetch(`/api/cache/stats/${this.sessionId}`, {
+                 method: 'GET',
+                 headers: {
+                     'Content-Type': 'application/json'
+                 }
+             });
+             
+             if (!response.ok) {
+                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+             }
+             
              const data = await response.json();
              
              if (data.success) {
@@ -615,6 +692,7 @@ class CSVTranslator {
                  this.showMessage(data.message, 'error');
              }
          } catch (error) {
+             console.error('缓存统计请求失败:', error);
              this.showMessage('获取缓存统计失败: ' + error.message, 'error');
          }
      }
@@ -622,7 +700,7 @@ class CSVTranslator {
      // 清理缓存
      async clearCache() {
          if (!this.sessionId) {
-             this.showMessage('会话未初始化', 'error');
+             this.showMessage('会话未初始化，请等待连接建立', 'warning');
              return;
          }
          
@@ -632,8 +710,16 @@ class CSVTranslator {
          
          try {
              const response = await fetch(`/api/cache/clear/${this.sessionId}`, {
-                 method: 'POST'
+                 method: 'POST',
+                 headers: {
+                     'Content-Type': 'application/json'
+                 }
              });
+             
+             if (!response.ok) {
+                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+             }
+             
              const data = await response.json();
              
              if (data.success) {
@@ -642,6 +728,7 @@ class CSVTranslator {
                  this.showMessage(data.message, 'error');
              }
          } catch (error) {
+             console.error('清理缓存请求失败:', error);
              this.showMessage('清理缓存失败: ' + error.message, 'error');
          }
      }
