@@ -58,6 +58,7 @@ const csvService = new CSVService();
 const sessionTranslationServices = new Map();
 // 存储会话信息
 const sessionInfo = new Map();
+const activeTranslations = new Map(); // 存储正在进行的翻译任务
 
 // API路由
 
@@ -183,6 +184,17 @@ app.post('/api/translate', upload.single('csvFile'), async (req, res) => {
     // 获取源文本
     const sourceTexts = csvService.getSourceTexts(data, sourceColumn);
     
+    // 创建翻译任务控制器
+    const translationController = {
+        shouldStop: false,
+        stop: () => {
+            translationController.shouldStop = true;
+        }
+    };
+    
+    // 将翻译任务添加到活动任务列表
+    activeTranslations.set(sessionId, translationController);
+    
     // 翻译进度跟踪
     let completedTranslations = 0;
     const totalTranslations = targetLangs.length * sourceTexts.length;
@@ -190,6 +202,12 @@ app.post('/api/translate', upload.single('csvFile'), async (req, res) => {
         
         // 为每种目标语言进行翻译
         for (const targetLang of targetLangs) {
+            // 检查是否需要停止翻译
+            if (translationController.shouldStop) {
+                console.log(`翻译已被停止 - 会话: ${sessionId}`);
+                break;
+            }
+            
             if (targetLang === sourceColumn) {
                 continue; // 跳过源语言列
             }
@@ -217,6 +235,11 @@ app.post('/api/translate', upload.single('csvFile'), async (req, res) => {
                      'auto',
                      targetLang,
                      (feedback) => {
+                         // 检查是否需要停止翻译
+                         if (translationController.shouldStop) {
+                             return false; // 返回false表示停止翻译
+                         }
+                         
                          // 实时反馈回调函数
                          const dataIndex = indices[feedback.index];
                          data[dataIndex][targetLang] = feedback.translatedText;
@@ -234,12 +257,18 @@ app.post('/api/translate', upload.single('csvFile'), async (req, res) => {
                                  error: feedback.error
                              });
                          }
-                     }
+                         
+                         return true; // 返回true表示继续翻译
+                     },
+                     translationController // 传递控制器以便在翻译服务中检查停止状态
                  );
              }
              
              console.log(`${targetLang} 翻译完成`);
         }
+        
+        // 移除活动翻译任务
+        activeTranslations.delete(sessionId);
 
         // 生成输出文件
         const outputFileName = `translated_${Date.now()}.csv`;
@@ -253,6 +282,28 @@ app.post('/api/translate', upload.single('csvFile'), async (req, res) => {
         
         // 获取缓存统计信息
         const cacheStats = translationService.getCacheStats();
+        
+        // 检查翻译是否被停止
+        if (translationController.shouldStop) {
+            // 清理上传的临时文件
+            csvService.cleanupFile(filePath);
+            
+            // 发送翻译停止状态到客户端
+            if (sessionSocket) {
+                sessionSocket.emit('translationStopped', {
+                    sessionId: sessionId,
+                    message: '翻译已停止'
+                });
+            }
+            
+            return res.json({
+                success: false,
+                message: '翻译已停止',
+                data: {
+                    completedTranslations: completedTranslations
+                }
+            });
+        }
         
         // 发送最终完成状态到客户端
         if (sessionSocket) {
@@ -382,9 +433,17 @@ io.on('connection', (socket) => {
     socket.on('disconnect', () => {
         console.log('客户端已断开连接:', socket.id);
         
-        // 清理会话信息
+        // 清理会话信息并停止翻译
         for (const [sessionId, sessionSocket] of sessionInfo.entries()) {
             if (sessionSocket === socket) {
+                // 停止正在进行的翻译任务
+                const translationController = activeTranslations.get(sessionId);
+                if (translationController) {
+                    translationController.stop();
+                    activeTranslations.delete(sessionId);
+                    console.log('翻译任务已停止:', sessionId);
+                }
+                
                 sessionInfo.delete(sessionId);
                 sessionTranslationServices.delete(sessionId);
                 console.log('会话已清理:', sessionId);

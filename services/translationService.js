@@ -99,7 +99,7 @@ class BaiduTranslationService {
     }
 
     // 直接翻译（逐个翻译，实时反馈）
-    async translateDirect(texts, from = 'auto', to = 'zh', progressCallback = null) {
+    async translateDirect(texts, from = 'auto', to = 'zh', progressCallback = null, controller = null) {
         const results = [];
         const delay = 1; // 1ms延迟，避免API频率限制
         let successCount = 0;
@@ -108,6 +108,12 @@ class BaiduTranslationService {
         console.log(`开始直接翻译${texts.length}个文本，延迟${delay}ms避免API限制`);
         
         for (let i = 0; i < texts.length; i++) {
+            // 检查是否需要停止翻译
+            if (controller && controller.shouldStop) {
+                console.log(`翻译在第${i + 1}/${texts.length}个文本时被停止`);
+                break;
+            }
+            
             let translatedText = texts[i]; // 默认保持原文
             let hasError = false;
             let errorMessage = null;
@@ -124,7 +130,7 @@ class BaiduTranslationService {
             
             // 成功时反馈进度
             if (progressCallback) {
-                progressCallback({
+                const shouldContinue = progressCallback({
                     index: i,
                     total: texts.length,
                     originalText: texts[i],
@@ -132,6 +138,12 @@ class BaiduTranslationService {
                     progress: ((i + 1) / texts.length * 100).toFixed(1),
                     status: 'success'
                 });
+                
+                // 如果回调函数返回false，停止翻译
+                if (shouldContinue === false) {
+                    console.log(`翻译在第${i + 1}/${texts.length}个文本时被回调函数停止`);
+                    break;
+                }
             }
             
             // 添加延迟避免API频率限制
@@ -140,7 +152,8 @@ class BaiduTranslationService {
             }
         }
         
-        console.log(`翻译完成: 成功${successCount}个，失败${errorCount}个，总计${texts.length}个`);
+        const status = (controller && controller.shouldStop) ? '已停止' : '完成';
+        console.log(`翻译${status}: 成功${successCount}个，失败${errorCount}个，总计${texts.length}个`);
         return results;
     }
 

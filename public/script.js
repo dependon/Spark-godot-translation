@@ -638,6 +638,20 @@ class CSVTranslator {
                  }
              });
              
+             // 监听翻译停止事件
+             this.socket.on('translationStopped', (data) => {
+                 if (data.sessionId === this.sessionId) {
+                     console.log('翻译任务已停止:', data.message);
+                     this.showMessage('翻译任务已停止 - 客户端连接断开', 'warning');
+                     
+                     // 更新进度显示
+                     const progressElement = document.getElementById('progressText');
+                     if (progressElement) {
+                         progressElement.textContent = '翻译已停止';
+                     }
+                 }
+             });
+             
              this.socket.on('disconnect', () => {
                  console.log('与服务器断开连接');
                  this.sessionId = null;
