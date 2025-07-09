@@ -217,33 +217,56 @@ app.post('/api/translate', upload.single('csvFile'), async (req, res) => {
             });
 
             if (textsToTranslate.length > 0) {
-                // 使用实时反馈翻译，每翻译一个文本立即反馈
-                const sessionSocket = sessionInfo.get(sessionId);
-                
-                const translations = await translationService.translateWithRealTimeFeedback(
-                    textsToTranslate,
-                    'auto',
-                    targetLang,
-                    (feedback) => {
-                        // 实时反馈回调函数
-                        const dataIndex = indices[feedback.index];
-                        data[dataIndex][targetLang] = feedback.translatedText;
-                        completedTranslations++;
-                        
-                        // 立即发送翻译日志到客户端
-                        if (sessionSocket) {
-                            sessionSocket.emit('translationLog', {
-                                originalText: feedback.originalText,
-                                translatedText: feedback.translatedText,
-                                targetLanguage: targetLang,
-                                status: feedback.error ? 'error' : 'success',
-                                progress: Math.round((completedTranslations / totalTranslations) * 100),
-                                sessionId: sessionId,
-                                error: feedback.error
-                            });
+                try {
+                    // 使用实时反馈翻译，每翻译一个文本立即反馈
+                    const sessionSocket = sessionInfo.get(sessionId);
+                    
+                    const translations = await translationService.translateWithRealTimeFeedback(
+                        textsToTranslate,
+                        'auto',
+                        targetLang,
+                        (feedback) => {
+                            try {
+                                // 实时反馈回调函数
+                                const dataIndex = indices[feedback.index];
+                                data[dataIndex][targetLang] = feedback.translatedText;
+                                completedTranslations++;
+                                
+                                // 立即发送翻译日志到客户端
+                                if (sessionSocket) {
+                                    sessionSocket.emit('translationLog', {
+                                        originalText: feedback.originalText,
+                                        translatedText: feedback.translatedText,
+                                        targetLanguage: targetLang,
+                                        status: feedback.error ? 'error' : 'success',
+                                        progress: Math.round((completedTranslations / totalTranslations) * 100),
+                                        sessionId: sessionId,
+                                        error: feedback.error
+                                    });
+                                }
+                            } catch (callbackError) {
+                                console.error('回调处理错误:', callbackError.message);
+                                // 即使回调出错，也要确保进度继续
+                                completedTranslations++;
+                            }
                         }
+                    );
+                } catch (translationError) {
+                    console.error(`翻译语言${targetLang}时出错:`, translationError.message);
+                    // 即使某个语言翻译失败，也要继续处理其他语言
+                    const sessionSocket = sessionInfo.get(sessionId);
+                    if (sessionSocket) {
+                        sessionSocket.emit('translationLog', {
+                            originalText: '批量翻译',
+                            translatedText: `语言${targetLang}翻译失败`,
+                            targetLanguage: targetLang,
+                            status: 'error',
+                            progress: Math.round((completedTranslations / totalTranslations) * 100),
+                            sessionId: sessionId,
+                            error: translationError.message
+                        });
                     }
-                );
+                }
             }
             
             console.log(`${targetLang} 翻译完成`);
