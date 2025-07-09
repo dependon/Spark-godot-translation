@@ -298,16 +298,20 @@ class CSVTranslator {
                 this.showResult(data.data);
             } else {
                 this.showMessage(data.message, 'error');
-                this.updateProgress(0, '翻译失败，等待重新开始...');
+                this.addTranslationLog('系统', data.message, '系统', 'error', data.message);
+                this.updateProgress(100, '翻译失败');
             }
         } catch (error) {
+            let errorMessage = '';
             if (error.name === 'AbortError') {
-                this.showMessage('翻译请求超时，请检查网络连接或减少翻译内容', 'error');
+                errorMessage = '翻译请求超时，请检查网络连接或减少翻译内容';
             } else {
                 console.error('翻译请求失败:', error);
-                this.showMessage('翻译失败: ' + error.message, 'error');
+                errorMessage = '翻译失败: ' + error.message;
             }
-            this.updateProgress(0, '翻译失败，等待重新开始...');
+            this.showMessage(errorMessage, 'error');
+            this.addTranslationLog('系统', errorMessage, '系统', 'error', errorMessage);
+            this.updateProgress(100, '翻译失败');
         }
     }
 
