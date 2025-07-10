@@ -1,3 +1,7 @@
+# 使用的地址
+[https://godotts.fantacy.online](https://godotts.fantacy.online)
+
+
 # CSV翻译工具 - Godot多语言本地化助手
 
 一个专为Godot游戏引擎设计的CSV文件翻译工具，支持一键翻译28种语言，完美适配Godot的本地化工作流程。
