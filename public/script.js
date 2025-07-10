@@ -30,8 +30,17 @@ class CSVTranslator {
         // 翻译按钮
         document.getElementById('translateBtn').addEventListener('click', () => this.startTranslation());
         
+        // 停止翻译按钮
+        document.getElementById('stopTranslateBtn').addEventListener('click', () => this.stopTranslation());
+        
         // 下载按钮
         document.getElementById('downloadBtn').addEventListener('click', () => this.downloadFile());
+        
+        // 全选按钮
+        document.getElementById('selectAllBtn').addEventListener('click', () => this.selectAllLanguages());
+        
+        // 取消全选按钮
+        document.getElementById('deselectAllBtn').addEventListener('click', () => this.deselectAllLanguages());
         
         // 清空日志按钮
         document.getElementById('clearLogBtn').addEventListener('click', () => this.clearTranslationLog());
@@ -255,6 +264,9 @@ class CSVTranslator {
         
         this.updateProgress(0, '准备开始翻译...');
         
+        // 显示停止按钮，隐藏开始按钮
+        document.getElementById('translateBtn').style.display = 'none';
+        document.getElementById('stopTranslateBtn').style.display = 'inline-block';
         
         const formData = new FormData();
         formData.append('csvFile', this.currentFile);
@@ -289,11 +301,57 @@ class CSVTranslator {
             this.addTranslationLog('系统', data.message, '系统', 'error', data.message);
             this.updateProgress(100, '翻译失败');
         }
+        
+        // 恢复按钮状态
+        this.resetTranslationButtons();
     }
 
     getSelectedLanguages() {
         const checkboxes = document.querySelectorAll('#languageGrid input[type="checkbox"]:checked');
         return Array.from(checkboxes).map(cb => cb.value);
+    }
+
+    selectAllLanguages() {
+        const checkboxes = document.querySelectorAll('#languageGrid input[type="checkbox"]');
+        checkboxes.forEach(checkbox => {
+            checkbox.checked = true;
+        });
+        this.showMessage('已选择所有语言', 'success');
+    }
+
+    deselectAllLanguages() {
+        const checkboxes = document.querySelectorAll('#languageGrid input[type="checkbox"]');
+        checkboxes.forEach(checkbox => {
+            checkbox.checked = false;
+        });
+        this.showMessage('已取消选择所有语言', 'info');
+    }
+
+    stopTranslation() {
+        if (!this.sessionId) {
+            this.showMessage('没有正在进行的翻译任务', 'warning');
+            return;
+        }
+
+        if (confirm('确定要停止翻译吗？已翻译的内容将会保存。')) {
+            // 通过Socket发送停止翻译请求
+            if (this.socket && this.socket.connected) {
+                this.socket.emit('stopTranslation', { sessionId: this.sessionId });
+                this.showMessage('正在停止翻译...', 'warning');
+                
+                // 恢复按钮状态
+                this.resetTranslationButtons();
+            } else {
+                this.showMessage('连接已断开，无法停止翻译', 'error');
+            }
+        }
+    }
+
+    resetTranslationButtons() {
+        // 隐藏停止按钮，显示开始按钮
+        document.getElementById('stopTranslateBtn').style.display = 'none';
+        document.getElementById('translateBtn').style.display = 'inline-block';
+        document.getElementById('translateBtn').disabled = false;
     }
 
     // 进度区域现在始终显示，不需要显示/隐藏方法
@@ -726,6 +784,9 @@ class CSVTranslator {
                      if (data.fileName) {
                          this.showDownloadLink(data.fileName);
                      }
+                     
+                     // 恢复按钮状态
+                     this.resetTranslationButtons();
                  }
              });
              
@@ -733,13 +794,24 @@ class CSVTranslator {
              this.socket.on('translationStopped', (data) => {
                  if (data.sessionId === this.sessionId) {
                      console.log('翻译任务已停止:', data.message);
-                     this.showMessage('翻译任务已停止 - 客户端连接断开', 'warning');
+                     
+                     // 根据是否有生成的文件显示不同消息
+                     if (data.fileName) {
+                         this.showMessage(`翻译已停止，已生成部分翻译结果。文件: ${data.fileName}`, 'warning');
+                         // 显示下载链接
+                         this.showDownloadLink(data.fileName);
+                     } else {
+                         this.showMessage('翻译任务已停止', 'warning');
+                     }
                      
                      // 更新进度显示
                      const progressElement = document.getElementById('progressText');
                      if (progressElement) {
                          progressElement.textContent = '翻译已停止';
                      }
+                     
+                     // 恢复按钮状态
+                     this.resetTranslationButtons();
                  }
              });
              

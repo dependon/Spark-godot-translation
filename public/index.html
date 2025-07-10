@@ -73,6 +73,10 @@
                     
                     <div class="form-group">
                         <label>目标翻译语言:</label>
+                        <div class="language-controls">
+                            <button type="button" id="selectAllBtn" class="btn btn-secondary btn-small">全选</button>
+                            <button type="button" id="deselectAllBtn" class="btn btn-secondary btn-small">取消全选</button>
+                        </div>
                         <div class="language-grid" id="languageGrid">
                             <!-- 语言选项将通过JavaScript动态生成 -->
                         </div>
@@ -86,7 +90,10 @@
                         </label>
                     </div>
                     
-                    <button id="translateBtn" class="btn btn-success">开始翻译</button>
+                    <div class="translation-controls">
+                        <button id="translateBtn" class="btn btn-success">开始翻译</button>
+                        <button id="stopTranslateBtn" class="btn btn-danger" style="display: none;">停止翻译</button>
+                    </div>
                 </div>
             </section>
 

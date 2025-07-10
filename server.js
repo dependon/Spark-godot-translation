@@ -307,6 +307,19 @@ app.post('/api/translate', upload.single('csvFile'), async (req, res) => {
         
         // 检查翻译是否被停止
         if (translationController.shouldStop) {
+            console.log('翻译被停止，生成部分翻译结果');
+            
+            // 生成部分翻译结果的CSV文件
+            const partialOutputFileName = `partial_translated_${Date.now()}.csv`;
+            let partialOutputPath;
+            
+            try {
+                partialOutputPath = await csvService.generateCSV(data, headers, partialOutputFileName);
+                console.log(`部分翻译CSV文件生成成功: ${partialOutputFileName}`);
+            } catch (error) {
+                console.error('生成部分翻译文件失败:', error);
+            }
+            
             // 清理上传的临时文件
             csvService.cleanupFile(filePath);
             
@@ -314,7 +327,10 @@ app.post('/api/translate', upload.single('csvFile'), async (req, res) => {
             if (sessionSocket) {
                 sessionSocket.emit('translationStopped', {
                     sessionId: sessionId,
-                    message: '翻译已停止'
+                    message: '翻译已停止，已生成部分翻译结果',
+                    fileName: partialOutputPath ? partialOutputFileName : null,
+                    downloadUrl: partialOutputPath ? `/api/download/${partialOutputFileName}` : null,
+                    completedTranslations: completedTranslations
                 });
             }
             
@@ -322,6 +338,8 @@ app.post('/api/translate', upload.single('csvFile'), async (req, res) => {
                 success: false,
                 message: '翻译已停止',
                 data: {
+                    fileName: partialOutputPath ? partialOutputFileName : null,
+                    downloadUrl: partialOutputPath ? `/api/download/${partialOutputFileName}` : null,
                     completedTranslations: completedTranslations
                 }
             });
@@ -456,6 +474,34 @@ io.on('connection', (socket) => {
     socket.on('heartbeat', (data) => {
         // 响应心跳
         socket.emit('heartbeat_response', { timestamp: Date.now() });
+    });
+    
+    // 停止翻译处理
+    socket.on('stopTranslation', (data) => {
+        const { sessionId } = data;
+        console.log('收到停止翻译请求:', sessionId);
+        
+        if (sessionId) {
+            const translationController = activeTranslations.get(sessionId);
+            if (translationController) {
+                translationController.stop();
+                console.log('翻译任务已标记为停止:', sessionId);
+                
+                // 向客户端确认停止请求已收到
+                socket.emit('translationStopped', {
+                    sessionId: sessionId,
+                    message: '翻译停止请求已处理',
+                    fileName: null // 如果有部分结果文件，可以在这里设置
+                });
+            } else {
+                console.log('没有找到活动的翻译任务:', sessionId);
+                socket.emit('translationStopped', {
+                    sessionId: sessionId,
+                    message: '没有正在进行的翻译任务',
+                    fileName: null
+                });
+            }
+        }
     });
     
     socket.on('disconnect', () => {

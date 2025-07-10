@@ -130,6 +130,32 @@ select:focus {
     color: white;
 }
 
+.btn-danger {
+    background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+    color: white;
+}
+
+.btn-warning {
+    background: linear-gradient(135deg, #ffc107 0%, #e0a800 100%);
+    color: #212529;
+}
+
+.btn-info {
+    background: linear-gradient(135deg, #17a2b8 0%, #138496 100%);
+    color: white;
+}
+
+.btn-small {
+    padding: 8px 16px;
+    font-size: 14px;
+}
+
+.translation-controls {
+    display: flex;
+    gap: 15px;
+    align-items: center;
+}
+
 .btn:hover {
     transform: translateY(-2px);
     box-shadow: 0 5px 15px rgba(0,0,0,0.2);
@@ -221,6 +247,12 @@ select:focus {
     border-radius: 8px;
     padding: 15px;
     margin-top: 15px;
+}
+
+.language-controls {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 15px;
 }
 
 .language-grid {
