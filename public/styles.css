@@ -145,6 +145,11 @@ select:focus {
     color: white;
 }
 
+.btn-secondary {
+    background: linear-gradient(135deg, #6c757d 0%, #5a6268 100%);
+    color: white;
+}
+
 .btn-small {
     padding: 8px 16px;
     font-size: 14px;
