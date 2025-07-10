@@ -260,50 +260,64 @@ class CSVTranslator {
             return;
         }
         
+        if (!this.sessionId) {
+            this.showMessage('会话未初始化，请等待连接建立', 'error');
+            return;
+        }
+        
         const forceRetranslate = document.getElementById('forceRetranslate').checked;
         
-        this.updateProgress(0, '准备开始翻译...');
-        
-        // 显示停止按钮，隐藏开始按钮
-        document.getElementById('translateBtn').style.display = 'none';
-        document.getElementById('stopTranslateBtn').style.display = 'inline-block';
-        
-        const formData = new FormData();
-        formData.append('csvFile', this.currentFile);
-        formData.append('sourceColumn', sourceColumn);
-        formData.append('targetLanguages', JSON.stringify(selectedLanguages));
-        formData.append('forceRetranslate', forceRetranslate);
-        formData.append('sessionId', this.sessionId);
-        
-        // 设置较长的超时时间
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 300000); // 5分钟超时
-        
-        const response = await fetch('/api/translate', {
-            method: 'POST',
-            body: formData,
-            signal: controller.signal
-        });
-        
-        clearTimeout(timeoutId);
-        
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-        
-        const data = await response.json();
-        
-        if (data.success) {
-            this.updateProgress(100, '翻译完成!');
-            this.showResult(data.data);
-        } else {
-            this.showMessage(data.message, 'error');
-            this.addTranslationLog('系统', data.message, '系统', 'error', data.message);
+        try {
+            this.updateProgress(0, '准备开始翻译...');
+            
+            // 显示停止按钮，隐藏开始按钮
+            document.getElementById('translateBtn').style.display = 'none';
+            document.getElementById('stopTranslateBtn').style.display = 'inline-block';
+            
+            const formData = new FormData();
+            formData.append('csvFile', this.currentFile);
+            formData.append('sourceColumn', sourceColumn);
+            formData.append('targetLanguages', JSON.stringify(selectedLanguages));
+            formData.append('forceRetranslate', forceRetranslate);
+            formData.append('sessionId', this.sessionId);
+            
+            console.log('开始发送翻译请求，会话ID:', this.sessionId);
+            
+            // 设置较长的超时时间
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 300000); // 5分钟超时
+            
+            const response = await fetch('/api/translate', {
+                method: 'POST',
+                body: formData,
+                signal: controller.signal
+            });
+            
+            clearTimeout(timeoutId);
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                this.updateProgress(100, '翻译完成!');
+                this.showResult(data.data);
+            } else {
+                this.showMessage(data.message, 'error');
+                this.addTranslationLog('系统', data.message, '系统', 'error', data.message);
+                this.updateProgress(100, '翻译失败');
+            }
+            
+        } catch (error) {
+            console.error('翻译请求失败:', error);
+            this.showMessage(`翻译请求失败: ${error.message}`, 'error');
             this.updateProgress(100, '翻译失败');
+        } finally {
+            // 恢复按钮状态
+            this.resetTranslationButtons();
         }
-        
-        // 恢复按钮状态
-        this.resetTranslationButtons();
     }
 
     getSelectedLanguages() {

@@ -136,6 +136,8 @@ app.post('/api/translate', upload.single('csvFile'), async (req, res) => {
         sessionId
     } = req.body;
     
+    console.log('收到翻译请求，会话ID:', sessionId);
+    
     if (!sessionId) {
         return res.status(400).json({
             success: false,
@@ -173,32 +175,35 @@ app.post('/api/translate', upload.single('csvFile'), async (req, res) => {
         });
     }
 
-    const filePath = req.file.path;
-    let { headers, data } = await csvService.parseCSV(filePath);
-    
-    // 添加缺失的语言列
-    const result = csvService.addMissingLanguageColumns(data, headers, targetLangs);
-    data = result.data;
-    headers = result.headers;
+    try {
+        const filePath = req.file.path;
+        let { headers, data } = await csvService.parseCSV(filePath);
+        
+        // 添加缺失的语言列
+        const result = csvService.addMissingLanguageColumns(data, headers, targetLangs);
+        data = result.data;
+        headers = result.headers;
 
-    // 获取源文本
-    const sourceTexts = csvService.getSourceTexts(data, sourceColumn);
-    
-    // 创建翻译任务控制器
-    const translationController = {
-        shouldStop: false,
-        stop: () => {
-            translationController.shouldStop = true;
-        }
-    };
-    
-    // 将翻译任务添加到活动任务列表
-    activeTranslations.set(sessionId, translationController);
-    
-    // 翻译进度跟踪
-    let completedTranslations = 0;
-    const totalTranslations = targetLangs.length * sourceTexts.length;
-    const sessionSocket = sessionInfo.get(sessionId);
+        // 获取源文本
+        const sourceTexts = csvService.getSourceTexts(data, sourceColumn);
+        
+        // 创建翻译任务控制器
+        const translationController = {
+            shouldStop: false,
+            stop: () => {
+                translationController.shouldStop = true;
+            }
+        };
+        
+        // 将翻译任务添加到活动任务列表
+        activeTranslations.set(sessionId, translationController);
+        
+        console.log('翻译任务已添加到活动列表，会话ID:', sessionId);
+        
+        // 翻译进度跟踪
+        let completedTranslations = 0;
+        const totalTranslations = targetLangs.length * sourceTexts.length;
+        const sessionSocket = sessionInfo.get(sessionId);
         
         // 为每种目标语言进行翻译
         for (const targetLang of targetLangs) {
@@ -368,6 +373,33 @@ app.post('/api/translate', upload.single('csvFile'), async (req, res) => {
             }
         });
         
+    } catch (error) {
+        console.error('翻译处理过程中出错:', error);
+        
+        // 移除活动翻译任务
+        activeTranslations.delete(sessionId);
+        
+        // 清理上传的临时文件
+        if (req.file && req.file.path) {
+            csvService.cleanupFile(req.file.path);
+        }
+        
+        // 发送错误状态到客户端
+        const sessionSocket = sessionInfo.get(sessionId);
+        if (sessionSocket) {
+            sessionSocket.emit('translationComplete', {
+                sessionId: sessionId,
+                message: '翻译过程中发生错误',
+                hasErrors: true,
+                fileName: null
+            });
+        }
+        
+        res.status(500).json({
+            success: false,
+            message: `翻译过程中发生错误: ${error.message}`
+        });
+    }
 });
 
 // 下载翻译后的文件

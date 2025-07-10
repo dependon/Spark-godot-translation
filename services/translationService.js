@@ -72,30 +72,41 @@ class BaiduTranslationService {
             return this.translationCache.get(cacheKey);
         }
 
-        const salt = Date.now().toString();
-        const sign = this.generateSign(text, salt);
+        try {
+            const salt = Date.now().toString();
+            const sign = this.generateSign(text, salt);
 
-        const params = {
-            q: text,
-            from: from,
-            to: to,
-            appid: this.appId,
-            salt: salt,
-            sign: sign
-        };
+            const params = {
+                q: text,
+                from: from,
+                to: to,
+                appid: this.appId,
+                salt: salt,
+                sign: sign
+            };
 
-        const response = await axios.get(this.apiUrl, { params });
-        
-        if (response.data.error_code) {
-            //throw new Error(`翻译错误: ${response.data.error_msg}`);
+            const response = await axios.get(this.apiUrl, { params });
+            
+            if (response.data.error_code) {
+                console.error(`翻译API错误: ${response.data.error_msg}`);
+                return text; // 返回原文而不是抛出错误
+            }
+
+            if (!response.data.trans_result || !response.data.trans_result[0]) {
+                console.error('翻译API返回格式错误:', response.data);
+                return text; // 返回原文
+            }
+
+            const result = response.data.trans_result[0].dst;
+            
+            // 存储到缓存
+            this.translationCache.set(cacheKey, result);
+            
+            return result;
+        } catch (error) {
+            console.error('翻译请求失败:', error.message);
+            return text; // 返回原文而不是抛出错误
         }
-
-        const result = response.data.trans_result[0].dst;
-        
-        // 存储到缓存
-        this.translationCache.set(cacheKey, result);
-        
-        return result;
     }
 
     // 直接翻译（逐个翻译，实时反馈）
@@ -122,13 +133,21 @@ class BaiduTranslationService {
             if (!texts[i] || texts[i].trim() === '') {
                 translatedText = texts[i];
             } else {
-                translatedText = await this.translateText(texts[i], from, to);
-                successCount++;
+                try {
+                    translatedText = await this.translateText(texts[i], from, to);
+                    successCount++;
+                } catch (error) {
+                    console.error(`翻译第${i + 1}个文本时出错:`, error.message);
+                    translatedText = texts[i]; // 保持原文
+                    hasError = true;
+                    errorMessage = error.message;
+                    errorCount++;
+                }
             }
             
             results.push(translatedText);
             
-            // 成功时反馈进度
+            // 反馈进度（无论成功还是失败）
             if (progressCallback) {
                 const shouldContinue = progressCallback({
                     index: i,
@@ -136,7 +155,8 @@ class BaiduTranslationService {
                     originalText: texts[i],
                     translatedText: translatedText,
                     progress: ((i + 1) / texts.length * 100).toFixed(1),
-                    status: 'success'
+                    status: hasError ? 'error' : 'success',
+                    error: errorMessage
                 });
                 
                 // 如果回调函数返回false，停止翻译
